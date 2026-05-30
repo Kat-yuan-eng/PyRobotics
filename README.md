@@ -1,128 +1,93 @@
 # PyRobotics
+
 ![GitHub_Action_CI](https://github.com/Kat-yuan-eng/PyRobotics/workflows/CI/badge.svg)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-%E2%89%A53.9-blue.svg)](pyproject.toml)
 
-Python codes for intelligent vehicle autonomous driving with a four-layer architecture: **Perception → Decision → Control → System**.
-
+Intelligent vehicle autonomous driving software stack with four-layer architecture: **Perception → Decision → Control → System**. All modules decoupled via Protobuf messages with strict linear data flow.
 
 # Table of Contents
-   * [What is this?](#what-is-this)
-   * [Requirements](#requirements)
-   * [How to use](#how-to-use)
-   * [Perception](#perception)
-      * [Lane pixel detection](#lane-pixel-detection)
-      * [Obstacle detection](#obstacle-detection)
-      * [Obstacle tracking](#obstacle-tracking)
-      * [Sign recognition](#sign-recognition)
-      * [Sensor fusion](#sensor-fusion)
-   * [Decision](#decision)
-      * [Task scheduling](#task-scheduling)
-      * [Path smoothing](#path-smoothing)
-      * [Obstacle avoidance](#obstacle-avoidance)
-      * [Multi-agent coordination](#multi-agent-coordination)
-   * [Path Planning](#path-planning)
-      * [A* algorithm](#a-algorithm)
-      * [RRT planner](#rrt-planner)
-      * [Dynamic Window Approach](#dynamic-window-approach)
-   * [Path Tracking](#path-tracking)
-      * [Stanley control](#stanley-control)
-      * [Pure Pursuit control](#pure-pursuit-control)
-      * [Fuzzy control](#fuzzy-control)
-      * [Model predictive control](#model-predictive-control)
-      * [DQN control](#dqn-control)
-      * [Controller selection](#controller-selection)
-   * [Localization](#localization)
-      * [Extended Kalman Filter localization](#extended-kalman-filter-localization)
-      * [Particle filter localization](#particle-filter-localization)
-      * [Covariance Intersection fusion](#covariance-intersection-fusion)
-   * [SLAM](#slam)
-      * [FastSLAM 2.0](#fastslam-20)
-      * [Iterative Closest Point (ICP) Matching](#iterative-closest-point-icp-matching)
-      * [SLAM pipeline](#slam-pipeline)
-   * [System](#system)
-      * [Vehicle simulation](#vehicle-simulation)
-      * [Real-time pipeline](#real-time-pipeline)
-      * [Embedded C implementation](#embedded-c-implementation)
-      * [ROS2 integration](#ros2-integration)
-   * [License](#license)
-   * [Contribution](#contribution)
-   * [Authors](#authors)
+
+- [What is this?](#what-is-this)
+- [Requirements](#requirements)
+- [How to use](#how-to-use)
+- [Perception](#perception)
+  - [Lane pixel detection](#lane-pixel-detection)
+  - [Obstacle detection](#obstacle-detection)
+  - [Obstacle tracking](#obstacle-tracking)
+  - [Sign recognition](#sign-recognition)
+  - [Sensor fusion](#sensor-fusion)
+- [Decision](#decision)
+  - [Task scheduling](#task-scheduling)
+  - [Path smoothing](#path-smoothing)
+  - [Obstacle avoidance](#obstacle-avoidance)
+  - [Multi-agent coordination](#multi-agent-coordination)
+- [Path Planning](#path-planning)
+  - [A* algorithm](#a-algorithm)
+  - [RRT planner](#rrt-planner)
+  - [Dynamic Window Approach](#dynamic-window-approach)
+- [Path Tracking](#path-tracking)
+  - [Stanley control](#stanley-control)
+  - [Pure Pursuit control](#pure-pursuit-control)
+  - [Fuzzy control](#fuzzy-control)
+  - [Model predictive control](#model-predictive-control)
+  - [DQN control](#dqn-control)
+  - [Controller selection](#controller-selection)
+- [Localization](#localization)
+  - [Extended Kalman Filter localization](#extended-kalman-filter-localization)
+  - [Particle filter localization](#particle-filter-localization)
+  - [Covariance Intersection fusion](#covariance-intersection-fusion)
+- [SLAM](#slam)
+  - [FastSLAM 2.0](#fastslam-20)
+  - [Iterative Closest Point (ICP) Matching](#iterative-closest-point-icp-matching)
+  - [SLAM pipeline](#slam-pipeline)
+- [System](#system)
+  - [Vehicle simulation](#vehicle-simulation)
+  - [Real-time pipeline](#real-time-pipeline)
+  - [Embedded C implementation](#embedded-c-implementation)
+  - [ROS2 integration](#ros2-integration)
+- [License](#license)
+- [Contribution](#contribution)
+- [Authors](#authors)
 
 # What is PyRobotics?
 
-PyRobotics is a Python code collection for intelligent vehicle autonomous driving, implementing a complete four-layer software stack.
+PyRobotics implements a complete autonomous driving pipeline with multiple algorithm choices per layer:
 
-Features:
+| Layer | Algorithms | Output |
+|-------|-----------|--------|
+| Perception | HLS lane detection, RANSAC+DBSCAN obstacle detection, HOG sign recognition, pinhole fusion | `PerceptionOutput` |
+| Decision | FSM task scheduler (PATROL→AVOID→PARK), curvature-constrained smoothing, lateral offset avoidance | `DecisionOutput` |
+| Planning | A\*, RRT+smoothing, DWA (with global path alignment) | `PlanOutput` |
+| Tracking | Stanley, Pure Pursuit, Fuzzy, MPC, DQN + adaptive selector | `ControlCommand` |
+| Localization | EKF (Joseph-form), Particle Filter, Covariance Intersection | `LocalizationEstimate` |
+| SLAM | FastSLAM 2.0 (adaptive resampling), ICP (Huber kernel), integrated pipeline | `Map` + Pose |
 
-1. Complete autonomous driving pipeline: Perception → Decision → Control → System.
+**Safety-critical design**: Joseph-form covariance update, throttle/brake mutual exclusion (`if brake > 0.01: throttle = 0`), NaN guards in all estimators, covariance explosion reset.
 
-2. All modules decoupled via Protobuf messages with strict linear data flow.
+**Minimum dependency**: NumPy, SciPy, Matplotlib, OpenCV, scikit-learn, protobuf.
 
-3. Multiple algorithm choices per layer (5 tracking controllers, 3 planners, 3 localizers).
-
-4. Safety-critical design: Joseph-form covariance, throttle/brake mutual exclusion, NaN guards.
-
-5. Minimum dependency (NumPy, SciPy, Matplotlib, OpenCV, scikit-learn, protobuf).
-
-Inspired by [PythonRobotics](https://github.com/AtsushiSakai/PythonRobotics) — a Python code collection of robotics algorithms.
-
+Inspired by [PythonRobotics](https://github.com/AtsushiSakai/PythonRobotics).
 
 # Requirements
 
-For running each sample code:
+**Runtime:**
+- Python ≥ 3.9, NumPy, SciPy, Matplotlib, OpenCV, scikit-learn, protobuf
 
-- [Python 3.9+](https://www.python.org/)
-
-- [NumPy](https://numpy.org/)
-
-- [SciPy](https://scipy.org/)
-
-- [Matplotlib](https://matplotlib.org/)
-
-- [OpenCV](https://opencv.org/)
-
-- [scikit-learn](https://scikit-learn.org/)
-
-- [protobuf](https://protobuf.dev/)
-
-For development:
-
-- [pytest](https://pytest.org/) (for unit tests)
-
-- [grpcio-tools](https://grpc.io/) (for Protobuf code generation)
-
-- [ruff](https://docs.astral.sh/ruff/) (for code style check)
-
-- [mypy](https://mypy-lang.org/) (for type check)
-
+**Development:** pytest, grpcio-tools, ruff, mypy
 
 # How to use
 
-1. Clone this repo.
+```bash
+git clone https://github.com/Kat-yuan-eng/PyRobotics.git
+cd PyRobotics && pip install -r requirements/requirements.txt
+python PathTracking/stanley_controller.py    # run any module standalone
+python main_loop.py                           # closed-loop simulation
+```
 
-   ```terminal
-   git clone https://github.com/Kat-yuan-eng/PyRobotics.git
-   ```
+Regenerate Protobuf: `python -m grpc_tools.protoc -I=proto --python_out=generated proto/*.proto`
 
-
-2. Install the required libraries.
-
-   ```terminal
-   pip install -r requirements/requirements.txt
-   ```
-
-3. (Optional) Regenerate Protobuf code if you modify `.proto` files.
-
-   ```terminal
-   python -m grpc_tools.protoc -I=proto --python_out=generated proto/*.proto
-   ```
-
-
-4. Execute python script in each directory.
-
-5. Add star to this repo if you like it :smiley:.
-
+---
 
 # Perception
 
@@ -130,35 +95,25 @@ For development:
 
 <img src="docs/images/lane_detection.png" width="640" alt="Lane detection">
 
-This is a lane pixel detection module using HLS color space conversion and scan-line peak detection with jump filter.
-
-It extracts lane center line and boundary points from camera images.
+Extracts lane center line and boundary points from camera images via **HLS color space conversion → scan-line peak detection with jump filter**. The jump filter rejects isolated noise pixels by enforcing minimum peak width and height thresholds. Outputs pixel coordinates of left/right boundaries and center line for downstream path planning.
 
 ## Obstacle detection
 
 <img src="docs/images/obstacle_detection.png" width="640" alt="Obstacle detection">
 
-This is a 3D obstacle detection module using RANSAC ground plane removal, DBSCAN clustering, and OBB (Oriented Bounding Box) fitting.
-
-It outputs obstacle center, size, and orientation for downstream decision-making.
+Processes 3D LiDAR point clouds through a **RANSAC ground plane removal → voxel downsampling → DBSCAN clustering → OBB fitting** pipeline. Each detected obstacle outputs center position (x, y), dimensions (length × width), heading angle, and confidence score. Ground removal uses a robust plane model fit; clustering groups nearby points into individual objects.
 
 ## Obstacle tracking
 
-This is a multi-object tracking module using Hungarian algorithm for data association and Kalman filter for velocity estimation.
-
-It maintains track IDs across frames and handles track creation/deletion.
+Maintains consistent track IDs across frames using **Hungarian algorithm for data association** combined with **Kalman filter for velocity estimation**. Handles track creation (new detections unmatched), persistence (matched with predicted position), and deletion (lost for N consecutive frames). Outputs tracked obstacle list with velocity vectors for prediction.
 
 ## Sign recognition
 
-This is a traffic sign recognition module using HOG (Histogram of Oriented Gradients) descriptors and template matching.
-
-It detects and classifies speed limit and stop signs from camera images.
+Detects and classifies traffic signs (speed limit, stop) from camera images using **HOG (Histogram of Oriented Gradients) descriptors** matched against pre-trained templates via normalized cross-correlation. Supports multi-scale sliding window search with non-maximum suppression to handle signs at varying distances.
 
 ## Sensor fusion
 
-This is a multi-sensor fusion module using pinhole camera model back-projection.
-
-It transforms detections from camera pixel coordinates to vehicle coordinates, combining camera and LiDAR information into a unified PerceptionOutput message.
+Fuses camera detections and LiDAR obstacles into a unified coordinate frame using **pinhole camera model back-projection**. Transforms 2D pixel detections to 3D vehicle coordinates via camera intrinsic/extrinsic matrices, then merges with LiDAR obstacles by spatial proximity. Outputs a single `PerceptionOutput` message consumed by the decision layer.
 
 # Decision
 
@@ -166,29 +121,21 @@ It transforms detections from camera pixel coordinates to vehicle coordinates, c
 
 <img src="docs/images/task_scheduler.png" width="640" alt="Task scheduler">
 
-This is a finite state machine (FSM) based task scheduler with three states: PATROL → AVOID → PARK.
-
-It generates DecisionOutput messages containing target path, speed, and behavior for the control layer.
+Finite state machine orchestrating three operational modes: **PATROL → AVOID → PARK**. State transitions are triggered by perception events — obstacle proximity triggers PATROL→AVOID, parking sign triggers PARK, obstacle clearance returns to PATROL. Each state generates appropriate target path, speed profile, and behavior flag for the control layer. The visualization shows a full cycle: patrol (green) until an obstacle appears at step 15, avoid (orange) while maneuvering around it, then return to patrol after clearance at step 36.
 
 ## Path smoothing
 
-This is a curvature-constrained path smoothing module using iterative shortening with deviation bounds.
-
-It ensures the smoothed path stays within `max_deviation` of the original while producing continuous curvature profiles for downstream controllers.
+Refines piecewise-linear paths into **curvature-constrained smooth trajectories** via iterative shortening with deviation bounds. Ensures the smoothed path never deviates beyond `max_deviation` from the original waypoints while producing continuous curvature profiles suitable for downstream controllers. Uses gradient descent on path length minimization subject to curvature ≤ κ_max constraints.
 
 ## Obstacle avoidance
 
 <img src="docs/images/obstacle_avoidance.png" width="640" alt="Obstacle avoidance">
 
-This is a lateral offset obstacle avoidance module that generates parallel shifted paths around detected obstacles.
-
-It computes safe lateral offset based on obstacle size and safety margin.
+Generates **lateral offset bypass paths** around detected obstacles by shifting the reference trajectory left or right of each obstacle's safety envelope. Computes safe offset magnitude from obstacle dimensions plus configurable margin. Produces three candidate paths (left-shift, right-shift, original) for the controller selector to choose from based on feasibility.
 
 ## Multi-agent coordination
 
-This is a multi-agent coordination module with ID-offset assignment and velocity validation.
-
-It prevents ID collisions between agents and validates speed/timestamp consistency.
+Coordinates multiple vehicles sharing the same road segment via **ID-offset assignment** (each agent gets unique ID range) and **velocity validation** (rejects speed/timestamp outliers). Prevents ID collisions between agents and ensures temporal consistency of shared state messages.
 
 # Path Planning
 
@@ -196,38 +143,25 @@ It prevents ID collisions between agents and validates speed/timestamp consisten
 
 <img src="docs/images/a_star.png" width="640" alt="A* path planning">
 
-This is a 2D grid based shortest path planning with A* algorithm.
+Grid-based optimal path search using **A\*** heuristic (Euclidean distance). Explores nodes ordered by f(n) = g(n) + h(n) where g is cost-from-start and h is estimated-cost-to-goal. Returns the shortest collision-free path through a discretized occupancy grid. Resolution and robot radius are configurable parameters controlling plan quality vs computation time.
 
-In the animation, cyan points are searched nodes, red line is the planned path.
-
-Reference
-
-- [A* search algorithm - Wikipedia](https://en.wikipedia.org/wiki/A*_search_algorithm)
+Reference: [Wikipedia](https://en.wikipedia.org/wiki/A*_search_algorithm)
 
 ## RRT planner
 
 <img src="docs/images/rrt.png" width="640" alt="RRT path planning">
 
-This is a sampling-based path planning with RRT (Rapidly-Exploring Random Trees) and integrated path smoothing.
+Sampling-based planner using **Rapidly-exploring Random Trees (RRT)** with integrated path smoothing. Grows a tree from start toward randomly sampled goals, connecting to the nearest node when collision-free. The raw tree path is post-processed with shortcutting and spline smoothing to produce a drivable trajectory. Handles non-convex obstacle configurations that grid-based methods struggle with.
 
-Black circles are obstacles, green line is the search tree, red line is the smoothed path.
-
-Reference
-
-- [RRT - Wikipedia](https://en.wikipedia.org/wiki/Rapidly-exploring_random_tree)
+Reference: [Wikipedia](https://en.wikipedia.org/wiki/Rapidly-exploring_random_tree)
 
 ## Dynamic Window Approach
 
 <img src="docs/images/dwa.png" width="640" alt="DWA path planning">
 
-This is a 2D navigation with Dynamic Window Approach including global path alignment cost.
+Local planner evaluating **admissible velocity pairs (v, ω)** within the dynamic window defined by kinematic limits and acceleration constraints. Scores each candidate on heading error, obstacle clearance, velocity progress, and **global path alignment cost** (penalizes deviation from the global reference path). Selects the highest-scoring velocity command for the next control cycle.
 
-It evaluates candidate trajectories considering heading, clearance, speed, and global path consistency.
-
-Reference
-
-- [The Dynamic Window Approach to Collision Avoidance](https://www.ri.cmu.edu/pub_files/pub1/fox_dieter_1997_1/fox_dieter_1997_1.pdf)
-
+Reference: [Fox et al., 1997](https://www.ri.cmu.edu/pub_files/pub1/fox_dieter_1997_1/fox_dieter_1997_1.pdf)
 
 # Path Tracking
 
@@ -235,69 +169,39 @@ Reference
 
 <img src="docs/images/stanley.png" width="640" alt="Stanley control">
 
-Path tracking simulation with Stanley steering control (front-axle feedback) and PID speed control.
+Geometric steering law computing **cross-track error feedback at the front axle**: δ = θ_e + arctan(k·e / v). The heading error term (θ_e) aligns the vehicle orientation with the path tangent; the cross-track term (e/v) provides proportional correction scaled inversely with speed for stability at low speeds. Combined with PID longitudinal control for speed tracking. Proven on Stanford's DARPA Grand Challenge winner.
 
-The blue line is the reference path, the red line is the actual trajectory.
-
-Reference
-
-- [Stanley: The robot that won the DARPA grand challenge](http://robots.stanford.edu/papers/thrun.stanley05.pdf)
-
-- [Automatic Steering Methods for Autonomous Automobile Path Tracking](https://www.ri.cmu.edu/pub_files/2009/2/Automatic_Steering_Methods_for_Autonomous_Automobile_Path_Tracking.pdf)
-
+Reference: [Thrun et al., 2006](http://robots.stanford.edu/papers/thrun.stanley05.pdf) · [Snider, 2009](https://www.ri.cmu.edu/pub_files/2009/2/Automatic_Steering_Methods_for_Autonomous_Automobile_Path_Tracking.pdf)
 
 ## Pure Pursuit control
 
 <img src="docs/images/pure_pursuit.png" width="640" alt="Pure Pursuit control">
 
-Path tracking simulation with Pure Pursuit steering control and PID speed control.
+Lookahead-based geometric tracker selecting a **goal point on the reference path at distance L_d ahead** of the vehicle, then computing steering to drive toward that point. Lookahead distance is typically proportional to speed (L_d = k·v) for natural corner-cutting behavior at higher speeds. Simple, robust, and widely used as a baseline controller.
 
-The blue line is the reference path, the green circle is the lookahead distance, the red line is the actual trajectory.
-
-Reference
-
-- [Implementation of the Pure Pursuit Path Tracking Algorithm](https://www.ri.cmu.edu/pub_files/pub3/coulter_r_craig_1992_1/coulter_r_craig_1992_1.pdf)
-
+Reference: [Coulter, 1992](https://www.ri.cmu.edu/pub_files/pub3/coulter_r_craig_1992_1/coulter_r_craig_1992_1.pdf)
 
 ## Fuzzy control
 
 <img src="docs/images/fuzzy.png" width="640" alt="Fuzzy control">
 
-This is a curvature-adaptive fuzzy controller with complete membership function overlap.
-
-It uses curvature (κ) and speed deviation (Δv) as inputs, with 3×5 rule base for steering and throttle control.
-
-The membership functions are designed to eliminate boundary dead zones.
+**Curvature-adaptive fuzzy logic controller** taking road curvature (κ) and speed deviation (Δv) as inputs. Uses 3 membership functions for curvature (straight/gentle/sharp) and 5 for speed deviation (large_neg/neg/zero/pos/large_pos) with complete overlap to eliminate boundary dead zones. A 3×5 rule base maps input combinations to steering angle and throttle output. Excels in low-speed, high-curvature scenarios where model-based controllers struggle.
 
 ## Model predictive control
 
 <img src="docs/images/mpc.png" width="640" alt="MPC control">
 
-Path tracking simulation with iterative linear Model Predictive Control including terminal cost.
+Optimal control solving a **constrained optimization over a receding horizon**. Linearizes the bicycle model around the current state at each timestep, then minimizes a quadratic cost function penalizing cross-track error, heading error, steering effort, and terminal state deviation. Explicitly handles steering rate and acceleration constraints. Iterative linear MPC with warm-start from previous solution for real-time performance.
 
-It optimizes steering and speed over a prediction horizon with explicit constraint handling.
-
-Reference
-
-- [Real-time Model Predictive Control (MPC)](http://grauonline.de/wordpress/?page_id=3244)
-
+Reference: [Graichen, 2017](http://grauonline.de/wordpress/?page_id=3244)
 
 ## DQN control
 
-This is a Deep Q-Network (DQN) based controller with EMA action smoothing and safety filter.
-
-The Q-network outputs discrete steering actions, smoothed by exponential moving average (α=0.3).
-
-A safety filter overrides unsafe actions based on lateral error and heading error thresholds.
+Reinforcement learning-based controller training a **Deep Q-Network** to map state observations (cross-track error, heading error, path curvature, speed) to discrete steering actions. Post-training inference applies **exponential moving average smoothing (α=0.3)** to reduce action jitter, plus a **safety override filter** that clips actions when lateral error exceeds critical thresholds. Training reward combines path-following accuracy and smoothness penalties.
 
 ## Controller selection
 
-This is a speed/curvature-based controller selector with Bumpless Transfer.
-
-It switches between Stanley (high speed), Pure Pursuit (medium), and Fuzzy (low speed/curvature) based on current driving conditions.
-
-Bumpless Transfer ensures smooth steering transitions by passing `prev_steer` between controllers.
-
+Adaptive switching logic choosing among Stanley, Pure Pursuit, and Fuzzy based on **current speed and path curvature**. High speed → Stanley (stable at cruise), medium speed → Pure Pursuit (balanced), low speed/high curvature → Fuzzy (handles sharp turns). Implements **Bumpless Transfer** by passing the previous steering angle as initial condition to the newly activated controller, preventing discontinuous steering jumps during handoff.
 
 # Localization
 
@@ -305,153 +209,90 @@ Bumpless Transfer ensures smooth steering transitions by passing `prev_steer` be
 
 <img src="docs/images/ekf.png" width="640" alt="EKF localization">
 
-This is a sensor fusion localization with Extended Kalman Filter (EKF).
+Sensor fusion estimator combining **wheel odometry prediction** with **GPS/IMU observation updates** via first-order Taylor linearization. Uses **Joseph-form covariance update** (P = (I-KH)·P_pre·(I-KH)^T + K·R·K^T) which guarantees positive semi-definiteness even under numerical errors. Includes covariance explosion detection — resets P matrix when max(diag(P)) > 100 to prevent filter divergence from bad observations.
 
-The blue line is true trajectory, the black line is dead reckoning trajectory,
-
-and the red line is an estimated trajectory with EKF.
-
-It uses Joseph-form covariance update to guarantee positive definiteness.
-
-Covariance explosion detection resets P when max(diag) > 100.
-
-Reference
-
-- [PROBABILISTIC ROBOTICS](http://www.probabilistic-robotics.org/)
-
+Reference: [Probabilistic Robotics, Ch. 7](http://www.probabilistic-robotics.org/)
 
 ## Particle filter localization
 
 <img src="docs/images/particle_filter.png" width="640" alt="Particle filter localization">
 
-This is a sensor fusion localization with Particle Filter (PF).
+Monte Carlo localization maintaining **N particles representing pose hypotheses**, weighted by observation likelihood. Prediction step propagates particles through motion model; update step reweights by sensor measurement probability. Uses **systematic resampling** to prevent particle degeneracy, with NaN-safe weight normalization to handle zero-likelihood edge cases. Visualization shows particle cloud converging toward ground truth over time.
 
-The blue line is true trajectory, the black line is dead reckoning trajectory,
-
-and the red line is an estimated trajectory with PF.
-
-It uses systematic resampling with NaN-safe weight normalization.
-
-Reference
-
-- [PROBABILISTIC ROBOTICS](http://www.probabilistic-robotics.org/)
-
+Reference: [Probabilistic Robotics, Ch. 8](http://www.probabilistic-robotics.org/)
 
 ## Covariance Intersection fusion
 
 <img src="docs/images/fusion.png" width="640" alt="Covariance Intersection fusion">
 
-This is a multi-estimator fusion module using Covariance Intersection (CI).
-
-It combines EKF and PF estimates without requiring cross-correlation knowledge.
-
-Divergence detection falls back to the more consistent estimator when one diverges.
-
+Combines EKF and PF estimates into a **consistent fused estimate without requiring cross-correlation knowledge**. CI finds optimal convex combination weights (ω, 1-ω) minimizing the trace of fused covariance: P_fuse = ω·P_EKF + (1-ω)·PF_PF. Includes divergence detection — if one estimator's innovation exceeds 3σ threshold for consecutive steps, falls back to the more consistent estimator alone.
 
 # SLAM
-
-Simultaneous Localization and Mapping (SLAM) examples
 
 ## FastSLAM 2.0
 
 <img src="docs/images/fastslam.png" width="640" alt="FastSLAM 2.0">
 
-This is a feature based SLAM example using FastSLAM 2.0 with Joseph-form landmark update.
+Particle-based SLAM where **each particle carries its own EKF-based landmark map**. Landmark initialization uses a minimum-distance gate; data association solves via nearest-neighbor with Mahalanobis distance chi-squared test. Features **Joseph-form landmark update** (same numerical robustness as localization EKF) and **adaptive resampling threshold** based on EMA of effective sample size N_eff — resamples only when particle diversity drops below threshold, avoiding unnecessary computation.
 
-The blue line is ground truth, the black line is dead reckoning, the red line is the estimated trajectory with FastSLAM.
+Reference: [Probabilistic Robotics, Ch. 13](http://www.probabilistic-robotics.org/) · [Bailey & Durrant-Whyte](http://www-personal.acfr.usyd.edu.au/tbailey/software/slam_simulations.htm)
 
-The red points are particles of FastSLAM.
-
-Black points are landmarks, blue crosses are estimated landmark positions by FastSLAM.
-
-It uses adaptive resampling threshold based on EMA of effective sample size.
-
-Reference
-
-- [PROBABILISTIC ROBOTICS](http://www.probabilistic-robotics.org/)
-
-- [SLAM simulations by Tim Bailey](http://www-personal.acfr.usyd.edu.au/tbailey/software/slam_simulations.htm)
-
-
-## Iterative Closest Point (ICP) Matching
+## ICP matching
 
 <img src="docs/images/icp.png" width="640" alt="ICP matching">
 
-This is a 2D ICP matching example with singular value decomposition.
+Point cloud registration finding the **optimal rigid transformation (R, t)** aligning source points to target via iterative closest point correspondence. Each iteration: (1) find nearest neighbors, (2) compute SVD-based optimal transform, (3) apply transform, (4) check convergence. Supports **initial pose guess** for faster convergence and **Huber robust kernel** to downweight outlier correspondences. Terminates when translation change < ε_t or rotation change < ε_r.
 
-It supports initial pose guess and Huber robust kernel for outlier rejection.
-
-It can calculate a rotation matrix and a translation vector between point clouds.
-
-Reference
-
-- [Introduction to Mobile Robotics: Iterative Closest Point Algorithm](https://cs.gmu.edu/~kosecka/cs685/cs685-icp.pdf)
-
+Reference: [Besl & McKay, 1992](https://cs.gmu.edu/~kosecka/cs685/cs685-icp.pdf)
 
 ## SLAM pipeline
 
 <img src="docs/images/slam_pipeline.png" width="640" alt="SLAM pipeline">
 
-This is an integrated SLAM pipeline combining EKF localization, FastSLAM 2.0, and ICP refinement.
-
-It runs EKF for real-time localization and FastSLAM for map building, with periodic ICP loop closure.
-
+Integrated SLAM system running **EKF for real-time pose estimation** (fast, low-latency) and **FastSLAM 2.0 for background map building** (accurate, handles loop closure). Periodically runs ICP refinement to correct drift accumulation. Outputs pose estimate, landmark map, and per-step RMSE metrics for validation.
 
 # System
 
 ## Vehicle simulation
 
-This is a bicycle kinematic model vehicle simulator.
-
-It supports front-wheel steering with wheelbase compensation and provides state feedback for closed-loop control.
+Bicycle kinematic model providing **state feedback (x, y, yaw, v) for closed-loop control**. Supports front-wheel steering geometry with wheelbase-dependent turning radius. Configurable initial pose, speed limits, and simulation timestep. Used as the plant in all tracking controller tests.
 
 ## Real-time pipeline
 
-This is a dual-thread real-time pipeline with perception thread (30ms period) and control thread (50Hz).
-
-It uses thread-safe LatestResult containers for inter-thread communication.
+Dual-thread architecture implementing the perception-control timing requirements: **perception thread at 30ms period** (image processing, obstacle detection) and **control thread at 50Hz** (state estimation, path tracking). Inter-thread communication via thread-safe `LatestResult` containers ensuring the consumer always reads the most recent producer output without blocking.
 
 ## Embedded C implementation
 
-This is a set of embedded C implementations with Q16.16 fixed-point arithmetic:
+Production-ready C code for resource-constrained microcontrollers using **Q16.16 fixed-point arithmetic** throughout:
 
-- PID controller with anti-windup and jerk limiting
+| Module | Key Features |
+|--------|-------------|
+| PID | Anti-windup clamping, jerk limiting via rate-limited output |
+| Stanley | Front-axle cross-track error with fixed-point atan2 approximation |
+| EKF | Joseph-form update, FP_CLIP overflow protection on every multiply |
+| Vehicle | Inner-loop (steering) + outer-loop (speed) cascaded PID |
 
-- Stanley steering with front-axle feedback
-
-- EKF localization with Joseph-form update
-
-- Vehicle control with inner/outer loop PID
-
-All fixed-point operations include overflow protection (FP_CLIP).
+All fixed-point operations include `FP_CLIP()` macro to saturate results within [-32768, 32767] range, preventing integer overflow without branching.
 
 ## ROS2 integration
 
-This is a ROS2 integration package with three nodes:
+Three-node ROS2 package demonstrating production deployment:
 
-- Perception node: processes camera/LiDAR data
+- **Perception node**: subscribes to `/camera/image_raw` and `/lidar/points`, publishes `PerceptionOutput`
+- **Planning node**: uses `ApproximateTimeSynchronizer` to align multi-topic perception data before planning
+- **Control node**: subscribes to planned path, publishes `/vehicle/cmd_vel` (twist) and `/vehicle/steering_cmd`
 
-- Planning node: uses ApproximateTimeSynchronizer for multi-topic alignment
-
-- Control node: outputs vehicle commands
-
-It includes custom message definitions in `smart_car_interfaces`.
-
+Includes custom message definitions in `smart_car_interfaces/` package.
 
 # License
 
 MIT
 
-
 # Contribution
 
-Any contribution is welcome!!
-
-Please check [CONTRIBUTING.md](CONTRIBUTING.md) for details.
-
+Welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 # Authors
 
 - [PyRobotics Contributors](https://github.com/Kat-yuan-eng/PyRobotics/graphs/contributors)
-
 - Inspired by [PythonRobotics](https://github.com/AtsushiSakai/PythonRobotics) by Atsushi Sakai

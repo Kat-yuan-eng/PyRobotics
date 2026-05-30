@@ -235,7 +235,7 @@ def _task_avoid(perception_output, task_state, v_nominal, avoid_trigger_dist=8.0
         decision.behavior = Behavior.Value("BEHAVIOR_STOP")
         decision.target_speed = 0.0
     else:
-        decision.behavior = Behavior.Value("BEHAVIOR_OVERTAKE")
+        decision.behavior = Behavior.Value("BEHAVIOR_YIELD")
         decision.target_speed = v_nominal
 
     decision.status = DecisionStatus.Value("DECISION_NORMAL")
@@ -318,7 +318,11 @@ def schedule(perception_output, scheduler_state, v_nominal=5.0,
     scheduler_state["current_task"] = current_task
     scheduler_state["task_state"] = task_state
 
-    v_effective = v_nominal
+    v_effective = {
+        TASK_PATROL: v_nominal,
+        TASK_AVOID: min(v_nominal * 0.4, 2.0),
+        TASK_PARK: 0.0,
+    }.get(current_task, v_nominal)
 
     if current_task == TASK_PATROL:
         decision, task_state = _task_patrol(perception_output, task_state, v_effective, global_route=global_route)
@@ -433,6 +437,15 @@ if __name__ == "__main__":
 
         plt.tight_layout()
         plt.show()
+
+        unique_states = set(task_names_arr)
+        assert len(unique_states) >= 2, f"FSM must transition between states, got only {unique_states}"
+        assert task_names_arr[0] == "PATROL", f"FSM should start in PATROL, got {task_names_arr[0]}"
+        assert task_names_arr[-1] == "PATROL", f"FSM should end in PATROL, got {task_names_arr[-1]}"
+        assert len(set(speed_history)) > 1, "Speed profile must vary with state"
+        print(f"FSM validation PASSED: states={unique_states}, "
+              f"speed_range=[{min(speed_history):.1f},{max(speed_history):.1f}], "
+              f"behaviors={set(Behavior.Name(b) for b in behavior_history)}")
 
         state_diagram = {
             "PATROL": {"AVOID": "obstacle ahead", "PARK": "parking sign"},

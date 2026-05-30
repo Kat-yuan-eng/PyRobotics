@@ -237,14 +237,14 @@ def main():
     dt_mpc = 0.1
     max_steer_rad = np.radians(30.0)
     max_accel = 3.0
-    w_y = 3.0
-    w_theta = 2.0
+    w_y = 10.0
+    w_theta = 6.0
     w_v = 1.0
-    w_delta = 0.1
-    w_a = 0.1
+    w_delta = 0.05
+    w_a = 0.05
     w_deltadot = 0.5
     lr_mpc = 0.05
-    n_grad_iter = 3
+    n_grad_iter = 5
 
     x, y, yaw, v = cx[0], cy[0], cyaw[0], 2.0
     x_hist, y_hist, v_hist, t_hist, lat_err_hist = [], [], [], [], []
@@ -342,6 +342,11 @@ def main():
     axes[2].grid(True)
     plt.tight_layout()
     plt.show()
+
+    final_lat_err = np.sqrt(np.mean(np.array(lat_err_hist[-20:])**2)) if len(lat_err_hist) >= 20 else float('inf')
+    assert final_lat_err < 3.0, f"MPC lateral error too large: {final_lat_err:.2f}m (threshold: 3.0m)"
+    print(f"MPC validation PASSED: final_lateral_error_RMS={final_lat_err:.2f}m, "
+          f"max_speed={max(v_hist)*3.6:.1f}km/h")
 
 
 if __name__ == '__main__':
