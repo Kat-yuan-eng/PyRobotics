@@ -39,14 +39,10 @@ def _compute_cost(x, y, theta, v, deltas, accels,
                   w_y, w_theta, w_v, w_delta, w_a, w_deltadot, dt_mpc,
                   w_terminal=5.0):
     n = len(deltas)
-    ds_ref = np.sqrt(np.diff(ref_x)**2 + np.diff(ref_y)**2)
-    s_ref = np.concatenate([[0.0], np.cumsum(ds_ref)])
     cost = 0.0
-    s_pred = 0.0
     for k in range(1, n + 1):
-        s_pred += abs(v[k - 1]) * dt_mpc
-        idx = int(np.searchsorted(s_ref, s_pred))
-        idx = min(idx, len(ref_x) - 1)
+        dists_sq = (ref_x - x[k])**2 + (ref_y - y[k])**2
+        idx = int(np.argmin(dists_sq))
         cost += w_y * (y[k] - ref_y[idx])**2
         cost += w_theta * (theta[k] - ref_theta[idx])**2
         cost += w_v * (v[k] - ref_v[idx])**2
@@ -57,7 +53,8 @@ def _compute_cost(x, y, theta, v, deltas, accels,
         ddot = (deltas[k] - deltas[k - 1]) / dt_mpc
         cost += w_deltadot * ddot**2
 
-    idx_terminal = min(int(np.searchsorted(s_ref, s_pred)), len(ref_x) - 1)
+    dists_sq_t = (ref_x - x[n])**2 + (ref_y - y[n])**2
+    idx_terminal = int(np.argmin(dists_sq_t))
     cost += w_terminal * ((y[n] - ref_y[idx_terminal])**2 +
                           (theta[n] - ref_theta[idx_terminal])**2 +
                           (v[n] - ref_v[idx_terminal])**2)
@@ -232,8 +229,8 @@ def main():
     target_speed = 30.0 / 3.6
     dt = 0.1
     L = 2.7
-    max_sim_time = 60.0
-    N = 10
+    max_sim_time = 30.0
+    N = 20
     dt_mpc = 0.1
     max_steer_rad = np.radians(30.0)
     max_accel = 3.0
@@ -243,8 +240,8 @@ def main():
     w_delta = 0.05
     w_a = 0.05
     w_deltadot = 0.5
-    lr_mpc = 0.05
-    n_grad_iter = 5
+    lr_mpc = 0.1
+    n_grad_iter = 10
 
     x, y, yaw, v = cx[0], cy[0], cyaw[0], 2.0
     x_hist, y_hist, v_hist, t_hist, lat_err_hist = [], [], [], [], []
@@ -344,7 +341,7 @@ def main():
     plt.show()
 
     final_lat_err = np.sqrt(np.mean(np.array(lat_err_hist[-20:])**2)) if len(lat_err_hist) >= 20 else float('inf')
-    assert final_lat_err < 3.0, f"MPC lateral error too large: {final_lat_err:.2f}m (threshold: 3.0m)"
+    assert final_lat_err < 1.0, f"MPC lateral error too large: {final_lat_err:.2f}m (threshold: 1.0m)"
     print(f"MPC validation PASSED: final_lateral_error_RMS={final_lat_err:.2f}m, "
           f"max_speed={max(v_hist)*3.6:.1f}km/h")
 

@@ -6,6 +6,8 @@
 
 Intelligent vehicle autonomous driving software stack with four-layer architecture: **Perception → Decision → Control → System**. All modules decoupled via Protobuf messages with strict linear data flow.
 
+> **Reference**: [Probabilistic Robotics (Thrun et al., 2005)](http://www.probabilistic-robotics.org/) · [arXiv:1808.10703](https://arxiv.org/abs/1808.10703)
+
 # Table of Contents
 
 - [What is this?](#what-is-this)
@@ -80,9 +82,20 @@ Inspired by [PythonRobotics](https://github.com/AtsushiSakai/PythonRobotics).
 
 ```bash
 git clone https://github.com/Kat-yuan-eng/PyRobotics.git
-cd PyRobotics && pip install -r requirements/requirements.txt
-python PathTracking/stanley_controller.py    # run any module standalone
-python main_loop.py                           # closed-loop simulation
+cd PyRobotics
+
+# Option A: pip
+pip install -r requirements/requirements.txt
+
+# Option B: conda (recommended)
+conda env create -f environment.yml
+conda activate pyrobotics
+
+# Run any module standalone
+python PathTracking/stanley_controller.py
+
+# Closed-loop simulation
+python main_loop.py
 ```
 
 Regenerate Protobuf: `python -m grpc_tools.protoc -I=proto --python_out=generated proto/*.proto`
@@ -296,3 +309,23 @@ Welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 - [PyRobotics Contributors](https://github.com/Kat-yuan-eng/PyRobotics/graphs/contributors)
 - Inspired by [PythonRobotics](https://github.com/AtsushiSakai/PythonRobotics) by Atsushi Sakai
+
+# Citing
+
+If you use PyRobotics in your research, please cite:
+
+```bibtex
+@misc{pyrobotics2025,
+  title={PyRobotics: Intelligent Vehicle Autonomous Driving Software Stack},
+  author={Kat-yuan-eng},
+  year={2025},
+  url={https://github.com/Kat-yuan-eng/PyRobotics}
+}
+
+@book{probabilistic_robotics_2005,
+  title={Probabilistic Robotics},
+  author={Sebastian Thrun and Wolfram Burgard and Dieter Fox},
+  year={2005},
+  publisher={MIT Press}
+}
+```
