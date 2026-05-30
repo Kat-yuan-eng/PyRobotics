@@ -20,6 +20,7 @@ def run_slam_pipeline(n_steps=300, dt=0.1, n_landmarks=10, n_particles=200):
     Q = np.diag([0.2, np.deg2rad(5.0)]) ** 2
     R_motion = np.diag([0.2, np.deg2rad(5.0)]) ** 2
     NTh = n_particles * 0.5
+    rng = np.random.default_rng(42)
 
     true_traj, observations_seq, controls, landmarks = generate_slam_test(
         n_steps, dt, n_landmarks)
@@ -34,7 +35,7 @@ def run_slam_pipeline(n_steps=300, dt=0.1, n_landmarks=10, n_particles=200):
 
     for i in range(n_steps):
         particles, _, _ = fast_slam(particles, controls[i], observations_seq[i],
-                               Q, R_motion, dt, NTh, adaptive=False)
+                               Q, R_motion, dt, NTh, adaptive=False, rng=rng)
         est_traj[i], lm_est = estimate_from_particles(particles)
         est_lm_hist.append(lm_est)
 

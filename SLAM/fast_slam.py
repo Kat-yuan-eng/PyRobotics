@@ -50,8 +50,9 @@ def adaptive_R_motion_slam(R_base, u, curvature_scale=3.0, accel_scale=0.5):
     accel_factor = 1.0 + accel_scale * np.abs(u[0])
     return R_base * yaw_factor * accel_factor
 
-def predict_particles(particles, u, R_motion, dt):
-    rng = np.random.default_rng()
+def predict_particles(particles, u, R_motion, dt, rng=None):
+    if rng is None:
+        rng = np.random.default_rng()
     v_nom, yaw_rate_nom = u
     for p in particles:
         yaw = p["yaw"]
@@ -196,7 +197,7 @@ def proposal_sampling(p, z, Q, alpha=1.0):
 
 # === Phase 9: Resample ===
 
-def slam_roughening(particles, K=0.12):
+def slam_roughening(particles, K=0.12, rng=None):
     n = len(particles)
     if n == 0:
         return particles
@@ -215,7 +216,8 @@ def slam_roughening(particles, K=0.12):
     ])
     sigma = K * d_max
     sigma = np.maximum(sigma, 1e-9)
-    rng = np.random.default_rng()
+    if rng is None:
+        rng = np.random.default_rng()
     for p in particles:
         p["x"] += rng.normal(0, sigma[0])
         p["y"] += rng.normal(0, sigma[1])
@@ -223,7 +225,7 @@ def slam_roughening(particles, K=0.12):
         p["yaw"] = normalize_angle(p["yaw"])
     return particles
 
-def resampling(particles, n_threshold):
+def resampling(particles, n_threshold, rng=None):
     weights = np.array([p["w"] for p in particles])
     weights = weights / (weights.sum() + 1e-300)
     n_eff = 1.0 / (np.sum(weights**2) + 1e-300)
@@ -232,7 +234,9 @@ def resampling(particles, n_threshold):
     if n_eff < n_threshold:
         did_resample = True
         n = len(particles)
-        positions = (np.arange(n) + np.random.uniform()) / n
+        if rng is None:
+            rng = np.random.default_rng()
+        positions = (np.arange(n) + rng.uniform()) / n
         cumsum = np.cumsum(weights)
         indices = np.searchsorted(cumsum, positions)
         indices = np.clip(indices, 0, n - 1)
@@ -248,18 +252,20 @@ def resampling(particles, n_threshold):
                 "P": particles[idx]["P"].copy()
             })
         particles = new_particles
-        particles = slam_roughening(particles)
+        particles = slam_roughening(particles, rng=rng)
 
     return particles, did_resample, n_eff
 
 # === Phase 10: FastSLAM ===
 
-def fast_slam(particles, u, z, Q, R_motion, dt, n_threshold, adaptive=True):
+def fast_slam(particles, u, z, Q, R_motion, dt, n_threshold, adaptive=True, rng=None):
+    if rng is None:
+        rng = np.random.default_rng()
     if adaptive:
         R_eff = adaptive_R_motion_slam(R_motion, u)
     else:
         R_eff = R_motion
-    particles = predict_particles(particles, u, R_eff, dt)
+    particles = predict_particles(particles, u, R_eff, dt, rng=rng)
 
     if z is not None and len(z) > 0:
         z = np.asarray(z, dtype=float)
@@ -283,7 +289,7 @@ def fast_slam(particles, u, z, Q, R_motion, dt, n_threshold, adaptive=True):
         for p in particles:
             p["w"] = 1.0 / n
 
-    particles, did_resample, n_eff_pre = resampling(particles, n_threshold)
+    particles, did_resample, n_eff_pre = resampling(particles, n_threshold, rng=rng)
 
     return particles, did_resample, n_eff_pre
 
@@ -362,6 +368,7 @@ def run_fast_slam_demo():
     NTh = NP * 0.5
     Q = np.diag([0.2, np.deg2rad(5.0)]) ** 2
     R_motion = np.diag([0.2, np.deg2rad(5.0)]) ** 2
+    rng = np.random.default_rng(42)
 
     true_traj, observations_seq, controls, landmarks = generate_slam_test(dt=dt)
     n_steps = len(true_traj)
@@ -376,7 +383,7 @@ def run_fast_slam_demo():
     n_eff_min = float(NP)
 
     for i in range(n_steps):
-        particles, did_resample, n_eff_pre = fast_slam(particles, controls[i], observations_seq[i], Q, R_motion, dt, NTh, adaptive=False)
+        particles, did_resample, n_eff_pre = fast_slam(particles, controls[i], observations_seq[i], Q, R_motion, dt, NTh, adaptive=False, rng=rng)
         est_traj[i], P_est = estimate_from_particles(particles)
         n_eff_min = min(n_eff_min, n_eff_pre)
         if did_resample:
@@ -396,6 +403,7 @@ def main():
     NTh = NP * 0.5
     Q = np.diag([0.2, np.deg2rad(5.0)]) ** 2
     R_motion = np.diag([0.2, np.deg2rad(5.0)]) ** 2
+    rng = np.random.default_rng(42)
 
     true_traj, observations_seq, controls, landmarks = generate_slam_test(dt=dt)
     n_steps = len(true_traj)
@@ -414,7 +422,7 @@ def main():
 
     for i in range(n_steps):
         particles, did_resample, n_eff_pre = fast_slam(particles, controls[i], observations_seq[i],
-                              Q, R_motion, dt, NTh, adaptive=False)
+                              Q, R_motion, dt, NTh, adaptive=False, rng=rng)
         est_traj[i], lm_est = estimate_from_particles(particles)
         n_eff_history[i] = n_eff_pre
         if did_resample:
