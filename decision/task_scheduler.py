@@ -176,7 +176,7 @@ def _task_patrol(perception_output, task_state, v_nominal, global_route=None):
     return _lane_keep_decide(perception_output, v_nominal=v_nominal, global_route=global_route), task_state
 
 
-def _task_avoid(perception_output, task_state, v_nominal):
+def _task_avoid(perception_output, task_state, v_nominal, avoid_trigger_dist=8.0):
     if not perception_output.road_valid or len(perception_output.road.center_line) < 3:
         decision = DecisionOutput()
         decision.header.timestamp_ns = int(time.time() * 1e9)
@@ -243,7 +243,13 @@ def _task_avoid(perception_output, task_state, v_nominal):
     decision.target_lane = 0
     decision.has_target_lane = True
     decision.has_target_speed = True
-    task_state["obstacle_passed"] = False
+
+    has_obstacle_ahead = any(
+        obs.center.x > 0 and np.sqrt(obs.center.x**2 + obs.center.y**2) < avoid_trigger_dist + 3.0
+        for obs in perception_output.obstacles
+        if np.isfinite(obs.center.x) and np.isfinite(obs.center.y)
+    )
+    task_state["obstacle_passed"] = not has_obstacle_ahead
     return decision, task_state
 
 
@@ -317,7 +323,7 @@ def schedule(perception_output, scheduler_state, v_nominal=5.0,
     if current_task == TASK_PATROL:
         decision, task_state = _task_patrol(perception_output, task_state, v_effective, global_route=global_route)
     elif current_task == TASK_AVOID:
-        decision, task_state = _task_avoid(perception_output, task_state, v_effective)
+        decision, task_state = _task_avoid(perception_output, task_state, v_effective, avoid_trigger_dist)
     elif current_task == TASK_PARK:
         decision, task_state = _task_park(perception_output, task_state, v_effective)
     else:
@@ -356,7 +362,7 @@ if __name__ == "__main__":
         rng = np.random.default_rng(42)
 
         for step in range(n_steps):
-            perc_step = fuse_to_perception(rows, cx, obs, [], K, R, t)
+            perc_step = fuse_to_perception(rows, cx, [], [], K, R, t)
 
             if 15 <= step <= 35:
                 extra = PerceptionOutput()

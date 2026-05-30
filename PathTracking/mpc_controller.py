@@ -246,11 +246,11 @@ def main():
     lr_mpc = 0.05
     n_grad_iter = 3
 
-    x, y, yaw, v = cx[0], cy[0], cyaw[0], 0.0
+    x, y, yaw, v = cx[0], cy[0], cyaw[0], 2.0
     x_hist, y_hist, v_hist, t_hist, lat_err_hist = [], [], [], [], []
     t = 0.0
     deltas = np.zeros(N)
-    accels = np.zeros(N)
+    accels = np.full(N, 1.5)
 
     while t < max_sim_time:
         dx = cx - x
