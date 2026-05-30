@@ -1,7 +1,5 @@
-<img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=autonomous%20vehicle%20software%20architecture%20diagram%20four%20layer%20perception%20decision%20control%20system%20clean%20technical%20blue%20white&image_size=landscape_16_9" align="right" width="300" alt="PyRobotics header pic"/>
-
 # PyRobotics
-![GitHub_Action_CI](https://github.com/user/PyRobotics/workflows/CI/badge.svg)
+![GitHub_Action_CI](https://github.com/Kat-yuan-eng/PyRobotics/workflows/CI/badge.svg)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-%E2%89%A53.9-blue.svg)](pyproject.toml)
 
@@ -104,7 +102,7 @@ For development:
 1. Clone this repo.
 
    ```terminal
-   git clone https://github.com/user/PyRobotics.git
+   git clone https://github.com/Kat-yuan-eng/PyRobotics.git
    ```
 
 
@@ -130,7 +128,7 @@ For development:
 
 ## Lane pixel detection
 
-<img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=lane%20detection%20on%20road%20image%20green%20overlay%20on%20white%20lane%20markers%20top%20view%20clean&image_size=landscape_16_9" width="640" alt="Lane detection pic">
+<img src="docs/images/lane_detection.png" width="640" alt="Lane detection">
 
 This is a lane pixel detection module using HLS color space conversion and scan-line peak detection with jump filter.
 
@@ -138,7 +136,7 @@ It extracts lane center line and boundary points from camera images.
 
 ## Obstacle detection
 
-<img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=3D%20point%20cloud%20obstacle%20detection%20with%20colored%20clusters%20RANSAC%20ground%20removal%20DBSCAN%20clustering%20clean%20technical&image_size=landscape_16_9" width="640" alt="Obstacle detection pic">
+<img src="docs/images/obstacle_detection.png" width="640" alt="Obstacle detection">
 
 This is a 3D obstacle detection module using RANSAC ground plane removal, DBSCAN clustering, and OBB (Oriented Bounding Box) fitting.
 
@@ -158,8 +156,6 @@ It detects and classifies speed limit and stop signs from camera images.
 
 ## Sensor fusion
 
-<img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=multi%20sensor%20fusion%20diagram%20camera%20lidar%20pinhole%20model%20back%20projection%20vehicle%20coordinates%20technical&image_size=landscape_16_9" width="640" alt="Sensor fusion pic">
-
 This is a multi-sensor fusion module using pinhole camera model back-projection.
 
 It transforms detections from camera pixel coordinates to vehicle coordinates, combining camera and LiDAR information into a unified PerceptionOutput message.
@@ -167,6 +163,8 @@ It transforms detections from camera pixel coordinates to vehicle coordinates, c
 # Decision
 
 ## Task scheduling
+
+<img src="docs/images/task_scheduler.png" width="640" alt="Task scheduler">
 
 This is a finite state machine (FSM) based task scheduler with three states: PATROL → AVOID → PARK.
 
@@ -179,6 +177,8 @@ This is a curvature-constrained path smoothing module using iterative shortening
 It ensures the smoothed path stays within `max_deviation` of the original while producing continuous curvature profiles for downstream controllers.
 
 ## Obstacle avoidance
+
+<img src="docs/images/obstacle_avoidance.png" width="640" alt="Obstacle avoidance">
 
 This is a lateral offset obstacle avoidance module that generates parallel shifted paths around detected obstacles.
 
@@ -194,7 +194,7 @@ It prevents ID collisions between agents and validates speed/timestamp consisten
 
 ## A* algorithm
 
-<img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=A%20star%20path%20planning%20on%20grid%20map%20cyan%20searched%20nodes%20red%20path%20black%20obstacles%20green%20start%20goal&image_size=landscape_16_9" width="640" alt="A* pic">
+<img src="docs/images/a_star.png" width="640" alt="A* path planning">
 
 This is a 2D grid based shortest path planning with A* algorithm.
 
@@ -206,7 +206,7 @@ Reference
 
 ## RRT planner
 
-<img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=RRT%20rapidly%20exploring%20random%20tree%20path%20planning%20green%20tree%20red%20path%20black%20obstacles%20blue%20smoothed&image_size=landscape_16_9" width="640" alt="RRT pic">
+<img src="docs/images/rrt.png" width="640" alt="RRT path planning">
 
 This is a sampling-based path planning with RRT (Rapidly-Exploring Random Trees) and integrated path smoothing.
 
@@ -218,7 +218,7 @@ Reference
 
 ## Dynamic Window Approach
 
-<img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=dynamic%20window%20approach%20DWA%20local%20planner%20trajectory%20rollout%20obstacle%20avoidance%20robot%20navigation&image_size=landscape_16_9" width="640" alt="DWA pic">
+<img src="docs/images/dwa.png" width="640" alt="DWA path planning">
 
 This is a 2D navigation with Dynamic Window Approach including global path alignment cost.
 
@@ -233,7 +233,7 @@ Reference
 
 ## Stanley control
 
-<img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=Stanley%20controller%20path%20tracking%20front%20axle%20lateral%20error%20feedback%20vehicle%20following%20reference%20path&image_size=landscape_16_9" width="640" alt="Stanley pic">
+<img src="docs/images/stanley.png" width="640" alt="Stanley control">
 
 Path tracking simulation with Stanley steering control (front-axle feedback) and PID speed control.
 
@@ -248,7 +248,7 @@ Reference
 
 ## Pure Pursuit control
 
-<img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=pure%20pursuit%20controller%20lookahead%20circle%20arc%20path%20tracking%20vehicle%20bicycle%20model&image_size=landscape_16_9" width="640" alt="Pure Pursuit pic">
+<img src="docs/images/pure_pursuit.png" width="640" alt="Pure Pursuit control">
 
 Path tracking simulation with Pure Pursuit steering control and PID speed control.
 
@@ -261,6 +261,8 @@ Reference
 
 ## Fuzzy control
 
+<img src="docs/images/fuzzy.png" width="640" alt="Fuzzy control">
+
 This is a curvature-adaptive fuzzy controller with complete membership function overlap.
 
 It uses curvature (κ) and speed deviation (Δv) as inputs, with 3×5 rule base for steering and throttle control.
@@ -269,7 +271,7 @@ The membership functions are designed to eliminate boundary dead zones.
 
 ## Model predictive control
 
-<img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=model%20predictive%20control%20MPC%20path%20tracking%20predicted%20trajectory%20horizon%20vehicle%20reference%20path&image_size=landscape_16_9" width="640" alt="MPC pic">
+<img src="docs/images/mpc.png" width="640" alt="MPC control">
 
 Path tracking simulation with iterative linear Model Predictive Control including terminal cost.
 
@@ -301,7 +303,7 @@ Bumpless Transfer ensures smooth steering transitions by passing `prev_steer` be
 
 ## Extended Kalman Filter localization
 
-<img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=extended%20kalman%20filter%20localization%20blue%20true%20trajectory%20red%20estimated%20black%20dead%20reckoning%20landmarks&image_size=landscape_16_9" width="640" alt="EKF pic">
+<img src="docs/images/ekf.png" width="640" alt="EKF localization">
 
 This is a sensor fusion localization with Extended Kalman Filter (EKF).
 
@@ -320,7 +322,7 @@ Reference
 
 ## Particle filter localization
 
-<img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=particle%20filter%20localization%20red%20particles%20blue%20true%20trajectory%20black%20dead%20reckoning%20landmarks&image_size=landscape_16_9" width="640" alt="PF pic">
+<img src="docs/images/particle_filter.png" width="640" alt="Particle filter localization">
 
 This is a sensor fusion localization with Particle Filter (PF).
 
@@ -337,6 +339,8 @@ Reference
 
 ## Covariance Intersection fusion
 
+<img src="docs/images/fusion.png" width="640" alt="Covariance Intersection fusion">
+
 This is a multi-estimator fusion module using Covariance Intersection (CI).
 
 It combines EKF and PF estimates without requiring cross-correlation knowledge.
@@ -350,7 +354,7 @@ Simultaneous Localization and Mapping (SLAM) examples
 
 ## FastSLAM 2.0
 
-<img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=FastSLAM%202.0%20SLAM%20blue%20ground%20truth%20red%20estimated%20trajectory%20black%20landmarks%20blue%20crosses%20particles&image_size=landscape_16_9" width="640" alt="FastSLAM pic">
+<img src="docs/images/fastslam.png" width="640" alt="FastSLAM 2.0">
 
 This is a feature based SLAM example using FastSLAM 2.0 with Joseph-form landmark update.
 
@@ -371,7 +375,7 @@ Reference
 
 ## Iterative Closest Point (ICP) Matching
 
-<img src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=ICP%20iterative%20closest%20point%20matching%20two%20point%20clouds%20alignment%20before%20after%20convergence&image_size=landscape_16_9" width="640" alt="ICP pic">
+<img src="docs/images/icp.png" width="640" alt="ICP matching">
 
 This is a 2D ICP matching example with singular value decomposition.
 
@@ -385,6 +389,8 @@ Reference
 
 
 ## SLAM pipeline
+
+<img src="docs/images/slam_pipeline.png" width="640" alt="SLAM pipeline">
 
 This is an integrated SLAM pipeline combining EKF localization, FastSLAM 2.0, and ICP refinement.
 
@@ -410,8 +416,11 @@ It uses thread-safe LatestResult containers for inter-thread communication.
 This is a set of embedded C implementations with Q16.16 fixed-point arithmetic:
 
 - PID controller with anti-windup and jerk limiting
+
 - Stanley steering with front-axle feedback
+
 - EKF localization with Joseph-form update
+
 - Vehicle control with inner/outer loop PID
 
 All fixed-point operations include overflow protection (FP_CLIP).
@@ -421,7 +430,9 @@ All fixed-point operations include overflow protection (FP_CLIP).
 This is a ROS2 integration package with three nodes:
 
 - Perception node: processes camera/LiDAR data
+
 - Planning node: uses ApproximateTimeSynchronizer for multi-topic alignment
+
 - Control node: outputs vehicle commands
 
 It includes custom message definitions in `smart_car_interfaces`.
@@ -441,6 +452,6 @@ Please check [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 # Authors
 
-- [PyRobotics Contributors](https://github.com/user/PyRobotics/graphs/contributors)
+- [PyRobotics Contributors](https://github.com/Kat-yuan-eng/PyRobotics/graphs/contributors)
 
 - Inspired by [PythonRobotics](https://github.com/AtsushiSakai/PythonRobotics) by Atsushi Sakai
