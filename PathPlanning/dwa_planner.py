@@ -52,14 +52,15 @@ def calc_path_cost(trajectory, global_path):
 
 def calc_obstacle_cost(trajectory, ob, robot_radius):
     if len(ob) == 0:
-        return 0.0
-    safe_radius = robot_radius * 1.5
+        return 0.0, np.inf
+    safe_radius = robot_radius * 1.2
     dists = np.sqrt((trajectory[:, 0, None] - ob[None, :, 0])**2 +
                     (trajectory[:, 1, None] - ob[None, :, 1])**2)
     min_dists = dists.min(axis=1)
-    if min_dists.min() < safe_radius:
-        return np.inf
-    return 1.0 / (min_dists.min() - robot_radius + 1e-9)
+    min_dist_overall = min_dists.min()
+    if min_dist_overall < safe_radius:
+        return np.inf, min_dist_overall
+    return 1.0 / (min_dist_overall - robot_radius + 1e-9), min_dist_overall
 
 # === Phase 4: DWA Plan ===
 
@@ -68,13 +69,16 @@ def dwa_plan(x_state, goal, ob, max_speed=1.0, min_speed=-0.5,
              v_resolution=0.01, yaw_rate_resolution=2.0,
              predict_time=3.0, dt=0.1, robot_radius=1.0,
              to_goal_cost_gain=5.0, speed_cost_gain=1.0, obstacle_cost_gain=10.0,
-             path_cost_gain=1.0, global_path=None):
+             path_cost_gain=1.0, global_path=None, goal_threshold=None):
     t0 = time.perf_counter()
     max_yaw_rate_rad = np.deg2rad(max_yaw_rate)
     max_delta_yaw_rate_rad = np.deg2rad(max_delta_yaw_rate)
     yaw_rate_res_rad = np.deg2rad(yaw_rate_resolution)
 
-    if np.hypot(x_state[0] - goal[0], x_state[1] - goal[1]) < robot_radius:
+    if goal_threshold is None:
+        goal_threshold = robot_radius * 2.0
+
+    if np.hypot(x_state[0] - goal[0], x_state[1] - goal[1]) < goal_threshold:
         stats = {"planner": "DWA", "path_length": 0.0, "planning_time_ms": 0.0,
                  "nodes_explored": 0, "path_points": 1}
         return np.array([0.0, 0.0]), x_state.reshape(1, -1), stats
@@ -85,6 +89,9 @@ def dwa_plan(x_state, goal, ob, max_speed=1.0, min_speed=-0.5,
     best_u = np.array([0.0, 0.0])
     best_traj = np.array([x_state])
     min_cost = np.inf
+    best_u_emergency = np.array([0.0, 0.0])
+    best_traj_emergency = np.array([x_state])
+    max_min_dist = -1.0
 
     for v in np.arange(dw[0], dw[1], v_resolution):
         for yw in np.arange(dw[2], dw[3], yaw_rate_res_rad):
@@ -92,15 +99,25 @@ def dwa_plan(x_state, goal, ob, max_speed=1.0, min_speed=-0.5,
 
             goal_cost = to_goal_cost_gain * calc_to_goal_cost(traj, goal)
             speed_cost = speed_cost_gain * abs(max_speed - abs(traj[-1, 3]))
-            ob_cost = obstacle_cost_gain * calc_obstacle_cost(traj, ob, robot_radius)
+            ob_cost, min_dist = calc_obstacle_cost(traj, ob, robot_radius)
+            ob_cost = obstacle_cost_gain * ob_cost
             p_cost = path_cost_gain * calc_path_cost(traj, global_path) if global_path is not None else 0.0
 
             cost = goal_cost + speed_cost + ob_cost + p_cost
+
+            if min_dist > max_min_dist:
+                max_min_dist = min_dist
+                best_u_emergency = np.array([v, yw])
+                best_traj_emergency = traj
 
             if cost < min_cost:
                 min_cost = cost
                 best_u = np.array([v, yw])
                 best_traj = traj
+
+    if min_cost == np.inf:
+        best_u = best_u_emergency
+        best_traj = best_traj_emergency
 
     elapsed_ms = (time.perf_counter() - t0) * 1000
     path_length = np.sum(np.hypot(np.diff(best_traj[:, 0]), np.diff(best_traj[:, 1]))) if len(best_traj) > 1 else 0.0
