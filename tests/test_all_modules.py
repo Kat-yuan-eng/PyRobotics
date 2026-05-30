@@ -404,7 +404,7 @@ def test_fast_slam():
                                   n_landmarks=5) for _ in range(NP)]
     est_traj = np.zeros((50, 3))
     for i in range(50):
-        particles = fast_slam(particles, controls[i], obs_seq[i], Q, R_motion, dt, NTh)
+        particles, _, _ = fast_slam(particles, controls[i], obs_seq[i], Q, R_motion, dt, NTh)
         est_traj[i], _ = estimate_from_particles(particles)
     err = est_traj[:, :2] - true_traj[:, :2]
     rmse = np.sqrt(np.mean(err ** 2))

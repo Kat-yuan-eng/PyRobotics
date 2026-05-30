@@ -33,7 +33,7 @@ def run_slam_pipeline(n_steps=300, dt=0.1, n_landmarks=10, n_particles=100):
     rmse_hist = np.zeros(n_steps)
 
     for i in range(n_steps):
-        particles = fast_slam(particles, controls[i], observations_seq[i],
+        particles, _, _ = fast_slam(particles, controls[i], observations_seq[i],
                                Q, R_motion, dt, NTh)
         est_traj[i], lm_est = estimate_from_particles(particles)
         est_lm_hist.append(lm_est)

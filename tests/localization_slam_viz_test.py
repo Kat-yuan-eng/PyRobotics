@@ -244,7 +244,7 @@ def run_fastslam(true_states, controls, observations, landmarks,
     est = np.zeros((n, 3))
     lm_hist = []
     for i in range(n):
-        particles = fast_slam(particles, controls[i], observations[i], Q, R_motion, dt, NTh)
+        particles, _, _ = fast_slam(particles, controls[i], observations[i], Q, R_motion, dt, NTh)
         est[i], lm_est = estimate_from_particles(particles)
         lm_hist.append(lm_est)
     return est, lm_hist

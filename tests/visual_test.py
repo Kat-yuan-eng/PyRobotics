@@ -535,7 +535,7 @@ def scene6_slam():
     fig.suptitle("Scene 6: SLAM Pipeline", fontsize=14, fontweight='bold')
 
     for i in range(n_steps):
-        particles = fast_slam(particles, controls[i], obs_seq[i], Q, R_motion, dt, NTh)
+        particles, _, _ = fast_slam(particles, controls[i], obs_seq[i], Q, R_motion, dt, NTh)
         est_traj[i], _ = estimate_from_particles(particles)
         err = est_traj[i, :2] - true_traj[i, :2]
         rmse_hist[i] = np.sqrt(np.mean(err**2))

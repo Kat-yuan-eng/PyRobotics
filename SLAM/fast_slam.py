@@ -52,7 +52,21 @@ def adaptive_R_motion_slam(R_base, u, curvature_scale=3.0, accel_scale=0.5):
 
 def predict_particles(particles, u, R_motion, dt):
     rng = np.random.default_rng()
+    v_nom, yaw_rate_nom = u
     for p in particles:
+        yaw = p["yaw"]
+        F = np.array([
+            [1.0, 0.0, -v_nom * np.sin(yaw) * dt],
+            [0.0, 1.0,  v_nom * np.cos(yaw) * dt],
+            [0.0, 0.0, 1.0]
+        ])
+        G = np.array([
+            [np.cos(yaw) * dt, 0.0],
+            [np.sin(yaw) * dt, 0.0],
+            [0.0, dt]
+        ])
+        p["P"] = F @ p["P"] @ F.T + G @ R_motion @ G.T
+        p["P"] = 0.5 * (p["P"] + p["P"].T)
         noise = rng.multivariate_normal(np.zeros(2), R_motion)
         u_noised = u + noise
         new_pose = motion_model_slam(particle_pose(p), u_noised, dt)
@@ -213,8 +227,10 @@ def resampling(particles, n_threshold):
     weights = np.array([p["w"] for p in particles])
     weights = weights / (weights.sum() + 1e-300)
     n_eff = 1.0 / (np.sum(weights**2) + 1e-300)
+    did_resample = False
 
     if n_eff < n_threshold:
+        did_resample = True
         n = len(particles)
         positions = (np.arange(n) + np.random.uniform()) / n
         cumsum = np.cumsum(weights)
@@ -234,7 +250,7 @@ def resampling(particles, n_threshold):
         particles = new_particles
         particles = slam_roughening(particles)
 
-    return particles
+    return particles, did_resample, n_eff
 
 # === Phase 10: FastSLAM ===
 
@@ -254,7 +270,7 @@ def fast_slam(particles, u, z, Q, R_motion, dt, n_threshold, adaptive=True):
                 p = add_new_landmark(p, z_valid, Q)
                 for obs in z_valid:
                     obs_single = obs.reshape(1, -1)
-                    p["w"] = compute_weight(p, obs_single, Q)
+                    p["w"] *= compute_weight(p, obs_single, Q)
                     p = update_landmark(p, obs_single, Q)
                     p = proposal_sampling(p, obs_single, Q)
 
@@ -267,9 +283,9 @@ def fast_slam(particles, u, z, Q, R_motion, dt, n_threshold, adaptive=True):
         for p in particles:
             p["w"] = 1.0 / n
 
-    particles = resampling(particles, n_threshold)
+    particles, did_resample, n_eff_pre = resampling(particles, n_threshold)
 
-    return particles
+    return particles, did_resample, n_eff_pre
 
 def estimate_from_particles(particles):
     weights = np.array([p["w"] for p in particles])
@@ -342,12 +358,10 @@ def generate_slam_test(n_steps=300, dt=0.1, n_landmarks=10, seed=42):
 
 def run_fast_slam_demo():
     dt = 0.1
-    NP = 100
-    NTh = NP / 2.0
-    n_eff_ema = float(NP)
-    n_eff_alpha = 0.1
+    NP = 200
+    NTh = NP * 0.5
     Q = np.diag([0.2, np.deg2rad(5.0)]) ** 2
-    R_motion = np.diag([0.5, np.deg2rad(10.0)]) ** 2
+    R_motion = np.diag([0.2, np.deg2rad(5.0)]) ** 2
 
     true_traj, observations_seq, controls, landmarks = generate_slam_test(dt=dt)
     n_steps = len(true_traj)
@@ -358,30 +372,30 @@ def run_fast_slam_demo():
                  for _ in range(NP)]
 
     est_traj = np.zeros((n_steps, 3))
+    resample_count = 0
+    n_eff_min = float(NP)
 
     for i in range(n_steps):
-        particles = fast_slam(particles, controls[i], observations_seq[i], Q, R_motion, dt, NTh)
+        particles, did_resample, n_eff_pre = fast_slam(particles, controls[i], observations_seq[i], Q, R_motion, dt, NTh, adaptive=False)
         est_traj[i], P_est = estimate_from_particles(particles)
-        pw = np.array([p["w"] for p in particles])
-        n_eff = 1.0 / max(pw @ pw, 1e-300)
-        n_eff_ema = n_eff_alpha * n_eff + (1 - n_eff_alpha) * n_eff_ema
-        NTh = max(NP * 0.1, n_eff_ema * 0.5)
+        n_eff_min = min(n_eff_min, n_eff_pre)
+        if did_resample:
+            resample_count += 1
 
     err = est_traj[:, :2] - true_traj[:, :2]
     rmse = np.sqrt(np.mean(err**2))
     print(f"[FastSLAM] RMSE = {rmse:.3f}m (NP={NP})")
+    print(f"[FastSLAM] Resample={resample_count}/{n_steps}  N_eff_min={n_eff_min:.1f}")
     return rmse
 
 show_animation = True
 
 def main():
     dt = 0.1
-    NP = 100
-    NTh = NP / 1.5
-    n_eff_ema = float(NP)
-    n_eff_alpha = 0.1
+    NP = 200
+    NTh = NP * 0.5
     Q = np.diag([0.2, np.deg2rad(5.0)]) ** 2
-    R_motion = np.diag([0.5, np.deg2rad(10.0)]) ** 2
+    R_motion = np.diag([0.2, np.deg2rad(5.0)]) ** 2
 
     true_traj, observations_seq, controls, landmarks = generate_slam_test(dt=dt)
     n_steps = len(true_traj)
@@ -391,19 +405,20 @@ def main():
                                   n_landmarks=n_landmarks)
                  for _ in range(NP)]
     est_traj = np.zeros((n_steps, 3))
+    resample_count = 0
+    n_eff_history = np.zeros(n_steps)
 
     if show_animation:
         plt.ion()
         fig, ax = plt.subplots(figsize=(10, 10))
 
     for i in range(n_steps):
-        particles = fast_slam(particles, controls[i], observations_seq[i],
-                              Q, R_motion, dt, NTh)
+        particles, did_resample, n_eff_pre = fast_slam(particles, controls[i], observations_seq[i],
+                              Q, R_motion, dt, NTh, adaptive=False)
         est_traj[i], lm_est = estimate_from_particles(particles)
-        pw = np.array([p["w"] for p in particles])
-        n_eff = 1.0 / max(pw @ pw, 1e-300)
-        n_eff_ema = n_eff_alpha * n_eff + (1 - n_eff_alpha) * n_eff_ema
-        NTh = max(NP * 0.1, n_eff_ema * 0.5)
+        n_eff_history[i] = n_eff_pre
+        if did_resample:
+            resample_count += 1
 
         if show_animation and i % 5 == 0:
             plt.cla()
@@ -435,6 +450,15 @@ def main():
     err_angle = np.abs(np.rad2deg(normalize_angle(err_angle_raw)))
     t = np.arange(n_steps) * dt
 
+    n50 = min(50, n_steps)
+    rmse_first50 = np.sqrt(np.mean(err_pos[:n50] ** 2))
+    rmse_last50 = np.sqrt(np.mean(err_pos[-n50:] ** 2))
+    rmse = np.sqrt(np.mean(err_pos ** 2))
+    rmse_angle = np.sqrt(np.mean(err_angle ** 2))
+    max_err = np.max(err_pos)
+    n_eff_mean = np.mean(n_eff_history)
+    n_eff_min = np.min(n_eff_history)
+
     fig2, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), tight_layout=True)
     ax1.plot(t, err_pos, "-r")
     ax1.set_xlabel("Time [s]")
@@ -445,8 +469,10 @@ def main():
     ax2.set_ylabel("Angle Error [deg]")
     ax2.grid(True)
 
-    rmse = np.sqrt(np.mean(err_pos ** 2))
-    print(f"[FastSLAM] RMSE = {rmse:.3f}m (NP={NP})")
+    print(f"[FastSLAM] RMSE_pos={rmse:.3f}m  RMSE_angle={rmse_angle:.2f}deg  Max={max_err:.3f}m")
+    print(f"[FastSLAM] First50={rmse_first50:.3f}m  Last50={rmse_last50:.3f}m")
+    print(f"[FastSLAM] Resample={resample_count}/{n_steps}  N_eff_mean={n_eff_mean:.1f}  N_eff_min={n_eff_min:.1f}")
+    assert rmse < 0.5, f"RMSE={rmse:.3f}m exceeds 0.5m threshold"
 
     plt.show()
 
