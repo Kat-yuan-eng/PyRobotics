@@ -1,0 +1,42 @@
+syntax = "proto3";
+package smart_car.common;
+
+message Vec2 {
+  double x = 1;
+  double y = 2;
+}
+
+message Vec3 {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}
+
+message Pose2D {
+  double x = 1;
+  double y = 2;
+  double theta = 3;
+}
+
+message Twist2D {
+  double vx = 1;
+  double vy = 2;
+  double omega = 3;
+}
+
+message Header {
+  uint64 timestamp_ns = 1;
+  uint32 seq = 2;
+  string frame_id = 3;
+}
+
+message Landmark {
+  Vec2 position = 1;
+  uint32 id = 2;
+}
+
+message Observation {
+  double range = 1;
+  double bearing = 2;
+  uint32 landmark_id = 3;
+}

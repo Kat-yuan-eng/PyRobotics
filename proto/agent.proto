@@ -1,0 +1,15 @@
+syntax = "proto3";
+package smart_car.agent;
+
+import "common.proto";
+
+message AgentState {
+  uint32 agent_id = 1;
+  smart_car.common.Pose2D pose = 2;
+  repeated smart_car.common.Vec2 planned_path = 3;
+  double planned_speed = 4;
+  smart_car.common.Vec2 occupied_center = 5;
+  double occupied_length = 6;
+  double occupied_width = 7;
+  double timestamp = 8;
+}

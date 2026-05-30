@@ -1,0 +1,12 @@
+Header header
+uint8 state
+float64 steering_angle_actual
+float64 throttle_actual
+float64 brake_actual
+float64 speed_actual
+float64 yaw_rate_actual
+float64 acceleration_actual
+uint8 gear_actual
+uint8[] faults
+float64 battery_voltage
+uint32 heartbeat

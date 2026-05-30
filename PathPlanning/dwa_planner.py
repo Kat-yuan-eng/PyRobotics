@@ -1,0 +1,102 @@
+import numpy as np
+import time
+
+# === Phase 1: Dynamic Window ===
+
+def calc_dynamic_window(x_state, max_speed, min_speed, max_yaw_rate,
+                        max_accel, max_delta_yaw_rate, dt):
+    vs = [min_speed, max_speed, -max_yaw_rate, max_yaw_rate]
+    vd = [x_state[3] - max_accel * dt, x_state[3] + max_accel * dt,
+          x_state[4] - max_delta_yaw_rate * dt, x_state[4] + max_delta_yaw_rate * dt]
+    dw = [max(vs[0], vd[0]), min(vs[1], vd[1]),
+          max(vs[2], vd[2]), min(vs[3], vd[3])]
+    return dw
+
+# === Phase 2: Trajectory Prediction ===
+
+def predict_trajectory(x_init, v, yaw_rate, dt, predict_time):
+    n_steps = max(int(np.ceil(predict_time / dt)), 1)
+    traj = np.zeros((n_steps + 1, 5))
+    traj[0] = x_init.copy()
+    thetas = x_init[2] + yaw_rate * dt * np.arange(1, n_steps + 1)
+    traj[1:, 0] = x_init[0] + v * np.cumsum(np.cos(np.concatenate([[x_init[2]], thetas[:-1]]))) * dt
+    traj[1:, 1] = x_init[1] + v * np.cumsum(np.sin(np.concatenate([[x_init[2]], thetas[:-1]]))) * dt
+    traj[1:, 2] = thetas
+    traj[1:, 3] = v
+    traj[1:, 4] = yaw_rate
+    return traj
+
+# === Phase 3: Cost Functions ===
+
+def calc_to_goal_cost(trajectory, goal):
+    dx = trajectory[-1, 0] - goal[0]
+    dy = trajectory[-1, 1] - goal[1]
+    angle_to_goal = np.arctan2(dy, dx)
+    angle_diff = trajectory[-1, 2] - angle_to_goal
+    angle_diff = np.arctan2(np.sin(angle_diff), np.cos(angle_diff))
+    cost = abs(angle_diff)
+    return cost
+
+def calc_path_cost(trajectory, global_path):
+    if len(global_path) == 0:
+        return 0.0
+    gp = np.asarray(global_path)
+    sampled = trajectory[::3]
+    dists = np.sqrt((sampled[:, 0, None] - gp[None, :, 0])**2 +
+                    (sampled[:, 1, None] - gp[None, :, 1])**2)
+    return dists.min(axis=1).mean()
+
+def calc_obstacle_cost(trajectory, ob, robot_radius):
+    if len(ob) == 0:
+        return 0.0
+    dists = np.sqrt((trajectory[:, 0, None] - ob[None, :, 0])**2 +
+                    (trajectory[:, 1, None] - ob[None, :, 1])**2)
+    min_dists = dists.min(axis=1)
+    if min_dists.min() < robot_radius:
+        return np.inf
+    return 1.0 / (min_dists.min() + 1e-9)
+
+# === Phase 4: DWA Plan ===
+
+def dwa_plan(x_state, goal, ob, max_speed=1.0, min_speed=-0.5,
+             max_yaw_rate=40.0, max_accel=0.2, max_delta_yaw_rate=40.0,
+             v_resolution=0.01, yaw_rate_resolution=0.1,
+             predict_time=3.0, dt=0.1, robot_radius=1.0,
+             to_goal_cost_gain=0.15, speed_cost_gain=1.0, obstacle_cost_gain=1.0,
+             path_cost_gain=0.5, global_path=None):
+    t0 = time.perf_counter()
+    max_yaw_rate_rad = np.deg2rad(max_yaw_rate)
+    max_delta_yaw_rate_rad = np.deg2rad(max_delta_yaw_rate)
+    yaw_rate_res_rad = np.deg2rad(yaw_rate_resolution)
+
+    dw = calc_dynamic_window(x_state, max_speed, min_speed, max_yaw_rate_rad,
+                             max_accel, max_delta_yaw_rate_rad, dt)
+
+    best_u = np.array([0.0, 0.0])
+    best_traj = np.array([x_state])
+    min_cost = np.inf
+
+    for v in np.arange(dw[0], dw[1], v_resolution):
+        for yw in np.arange(dw[2], dw[3], yaw_rate_res_rad):
+            traj = predict_trajectory(x_state, v, yw, dt, predict_time)
+
+            goal_cost = to_goal_cost_gain * calc_to_goal_cost(traj, goal)
+            speed_cost = speed_cost_gain * (max_speed - traj[-1, 3])
+            ob_cost = obstacle_cost_gain * calc_obstacle_cost(traj, ob, robot_radius)
+            p_cost = path_cost_gain * calc_path_cost(traj, global_path) if global_path is not None else 0.0
+
+            cost = goal_cost + speed_cost + ob_cost + p_cost
+
+            if cost < min_cost:
+                min_cost = cost
+                best_u = np.array([v, yw])
+                best_traj = traj
+
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    path_length = np.sum(np.hypot(np.diff(best_traj[:, 0]), np.diff(best_traj[:, 1]))) if len(best_traj) > 1 else 0.0
+    n_v = max(int((dw[1] - dw[0]) / v_resolution), 1)
+    n_yw = max(int((dw[3] - dw[2]) / yaw_rate_res_rad), 1)
+    stats = {"planner": "DWA", "path_length": path_length, "planning_time_ms": elapsed_ms,
+             "nodes_explored": n_v * n_yw, "path_points": len(best_traj)}
+
+    return best_u, best_traj, stats

@@ -1,0 +1,10 @@
+Header header
+uint8 mode
+SteeringCommand steering
+ThrottleCommand throttle_brake
+uint8 gear
+float64 target_speed
+float64 target_acceleration
+float64 lateral_error
+float64 heading_error
+bool control_valid

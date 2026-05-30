@@ -1,0 +1,53 @@
+syntax = "proto3";
+package smart_car.perception;
+
+import "common.proto";
+
+enum ObstacleType {
+  OBSTACLE_UNKNOWN = 0;
+  OBSTACLE_VEHICLE = 1;
+  OBSTACLE_PEDESTRIAN = 2;
+  OBSTACLE_CYCLIST = 3;
+  OBSTACLE_STATIC = 4;
+}
+
+enum ObstacleShape {
+  SHAPE_UNKNOWN = 0;
+  SHAPE_POINT = 1;
+  SHAPE_CIRCLE = 2;
+  SHAPE_RECT = 3;
+  SHAPE_POLYGON = 4;
+}
+
+message Obstacle {
+  uint32 id = 1;
+  ObstacleType type = 2;
+  ObstacleShape shape = 3;
+  smart_car.common.Vec2 center = 4;
+  double radius = 5;
+  double length = 6;
+  double width = 7;
+  double heading = 8;
+  repeated smart_car.common.Vec2 polygon = 9;
+  smart_car.common.Vec2 velocity = 10;
+  double confidence = 11;
+}
+
+message RoadBoundary {
+  repeated smart_car.common.Vec2 left_bound = 1;
+  repeated smart_car.common.Vec2 right_bound = 2;
+  repeated smart_car.common.Vec2 center_line = 3;
+  double lane_width = 4;
+  uint32 lane_count = 5;
+}
+
+message PerceptionOutput {
+  smart_car.common.Header header = 1;
+  RoadBoundary road = 2;
+  repeated Obstacle obstacles = 3;
+  smart_car.common.Pose2D ego_pose = 4;
+  bool road_valid = 5;
+  uint32 obstacle_count = 6;
+  repeated smart_car.common.Observation observations = 10;
+  repeated smart_car.common.Landmark landmarks = 11;
+}

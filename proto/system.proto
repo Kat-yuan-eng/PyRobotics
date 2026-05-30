@@ -1,0 +1,51 @@
+syntax = "proto3";
+package smart_car.system;
+
+import "common.proto";
+import "control.proto";
+
+enum VehicleState {
+  VEHICLE_OFF = 0;
+  VEHICLE_STARTING = 1;
+  VEHICLE_READY = 2;
+  VEHICLE_DRIVING = 3;
+  VEHICLE_FAULT = 4;
+  VEHICLE_EMERGENCY = 5;
+}
+
+enum FaultCode {
+  FAULT_NONE = 0;
+  FAULT_STEERING_TIMEOUT = 1;
+  FAULT_BRAKE_TIMEOUT = 2;
+  FAULT_THROTTLE_TIMEOUT = 3;
+  FAULT_SENSOR_LOST = 4;
+  FAULT_COMMUNICATION_LOST = 5;
+  FAULT_CAN_BUS_ERROR = 6;
+  FAULT_WATCHDOG_TRIGGERED = 7;
+}
+
+message VehicleFeedback {
+  smart_car.common.Header header = 1;
+  VehicleState state = 2;
+  double steering_angle_actual = 3;
+  double throttle_actual = 4;
+  double brake_actual = 5;
+  double speed_actual = 6;
+  double yaw_rate_actual = 7;
+  double acceleration_actual = 8;
+  smart_car.control.GearPosition gear_actual = 9;
+  repeated FaultCode faults = 10;
+  double battery_voltage = 11;
+  uint32 heartbeat = 12;
+}
+
+message SystemCommand {
+  smart_car.common.Header header = 1;
+  bool enable_auto = 2;
+  bool emergency_stop = 3;
+  double max_speed_limit = 4;
+  double max_steering_limit = 5;
+  double max_accel_limit = 6;
+  double max_decel_limit = 7;
+  bool has_speed_limit = 8;
+}

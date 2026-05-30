@@ -1,0 +1,52 @@
+syntax = "proto3";
+package smart_car.decision;
+
+import "common.proto";
+
+enum Behavior {
+  BEHAVIOR_UNKNOWN = 0;
+  BEHAVIOR_LANE_KEEP = 1;
+  BEHAVIOR_LANE_CHANGE_LEFT = 2;
+  BEHAVIOR_LANE_CHANGE_RIGHT = 3;
+  BEHAVIOR_FOLLOW = 4;
+  BEHAVIOR_OVERTAKE = 5;
+  BEHAVIOR_STOP = 6;
+  BEHAVIOR_EMERGENCY_STOP = 7;
+  BEHAVIOR_YIELD = 8;
+  BEHAVIOR_PARK = 9;
+}
+
+enum DecisionStatus {
+  DECISION_NORMAL = 0;
+  DECISION_DEGRADED = 1;
+  DECISION_EMERGENCY = 2;
+}
+
+message PathPoint {
+  smart_car.common.Pose2D pose = 1;
+  double curvature = 2;
+  double speed = 3;
+  double acceleration = 4;
+  double relative_time = 5;
+}
+
+message TargetObject {
+  uint32 obstacle_id = 1;
+  double distance = 2;
+  double time_to_collision = 3;
+  bool is_lead = 4;
+}
+
+message DecisionOutput {
+  smart_car.common.Header header = 1;
+  Behavior behavior = 2;
+  DecisionStatus status = 3;
+  repeated PathPoint target_path = 4;
+  double target_speed = 5;
+  TargetObject lead_object = 6;
+  double stop_distance = 7;
+  uint32 target_lane = 8;
+  double path_length = 9;
+  bool has_target_lane = 10;
+  bool has_target_speed = 11;
+}

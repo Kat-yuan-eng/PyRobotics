@@ -1,0 +1,43 @@
+syntax = "proto3";
+package smart_car.control;
+
+import "common.proto";
+
+enum ControlMode {
+  MODE_MANUAL = 0;
+  MODE_AUTO = 1;
+  MODE_EMERGENCY = 2;
+}
+
+enum GearPosition {
+  GEAR_PARK = 0;
+  GEAR_REVERSE = 1;
+  GEAR_NEUTRAL = 2;
+  GEAR_DRIVE = 3;
+}
+
+message SteeringCommand {
+  double steering_angle = 1;
+  double steering_angle_rate = 2;
+  bool steering_valid = 3;
+}
+
+message ThrottleCommand {
+  double throttle = 1;
+  double brake = 2;
+  bool throttle_valid = 3;
+  bool brake_valid = 4;
+}
+
+message ControlOutput {
+  smart_car.common.Header header = 1;
+  ControlMode mode = 2;
+  SteeringCommand steering = 3;
+  ThrottleCommand throttle_brake = 4;
+  GearPosition gear = 5;
+  double target_speed = 6;
+  double target_acceleration = 7;
+  double lateral_error = 8;
+  double heading_error = 9;
+  bool control_valid = 10;
+}

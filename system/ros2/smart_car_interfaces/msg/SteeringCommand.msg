@@ -1,0 +1,3 @@
+float64 steering_angle
+float64 steering_angle_rate
+bool steering_valid

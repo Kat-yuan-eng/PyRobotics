@@ -1,0 +1,11 @@
+uint32 id
+uint8 type
+uint8 shape
+Vec2 center
+float64 radius
+float64 length
+float64 width
+float64 heading
+Vec2[] polygon
+Vec2 velocity
+float64 confidence

@@ -1,0 +1,9 @@
+Header header
+uint8 behavior
+uint8 status
+PathPoint[] target_path
+float64 target_speed
+TargetObject lead_object
+float64 stop_distance
+uint32 target_lane
+float64 path_length

@@ -1,0 +1,7 @@
+Header header
+bool enable_auto
+bool emergency_stop
+float64 max_speed_limit
+float64 max_steering_limit
+float64 max_accel_limit
+float64 max_decel_limit
