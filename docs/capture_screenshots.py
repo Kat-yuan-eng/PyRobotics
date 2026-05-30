@@ -135,8 +135,9 @@ def capture_pathplanning():
     ob = np.column_stack([ox, oy])
     traj_all = [x_state[:2].copy()]
     x = x_state.copy()
-    for _ in range(200):
-        u, traj, _ = dwa_plan(x, goal, ob, max_speed=2.0)
+    for _ in range(500):
+        u, traj, _ = dwa_plan(x, goal, ob, max_speed=2.0, max_accel=1.0,
+                              max_delta_yaw_rate=100.0, yaw_rate_resolution=1.0)
         x[0] += u[0] * math.cos(x[2]) * 0.1
         x[1] += u[0] * math.sin(x[2]) * 0.1
         x[2] += u[1] * 0.1

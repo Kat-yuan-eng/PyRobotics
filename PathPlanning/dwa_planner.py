@@ -65,8 +65,8 @@ def calc_obstacle_cost(trajectory, ob, robot_radius):
 # === Phase 4: DWA Plan ===
 
 def dwa_plan(x_state, goal, ob, max_speed=1.0, min_speed=-0.5,
-             max_yaw_rate=40.0, max_accel=0.2, max_delta_yaw_rate=40.0,
-             v_resolution=0.01, yaw_rate_resolution=2.0,
+             max_yaw_rate=40.0, max_accel=0.5, max_delta_yaw_rate=100.0,
+             v_resolution=0.01, yaw_rate_resolution=1.0,
              predict_time=3.0, dt=0.1, robot_radius=1.0,
              to_goal_cost_gain=5.0, speed_cost_gain=1.0, obstacle_cost_gain=10.0,
              path_cost_gain=1.0, global_path=None, goal_threshold=None):
