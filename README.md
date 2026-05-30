@@ -1,6 +1,14 @@
 # PyRobotics
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-%E2%89%A53.9-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](CHANGELOG.md)
+
 Intelligent vehicle autonomous driving software stack implementing a four-layer architecture: **Perception → Decision → Control → System**, with all modules decoupled via Protobuf messages.
+
+[中文文档](README_CN.md)
+
+---
 
 ## Architecture
 
@@ -19,6 +27,18 @@ Intelligent vehicle autonomous driving software stack implementing a four-layer 
 │  Vehicle Sim │ Realtime Pipeline │ Embedded C │ ROS2        │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+## Module Overview
+
+| Subsystem | Directory | Core Function | Key Algorithms |
+|-----------|-----------|---------------|----------------|
+| Perception | `perception/` | Lane/obstacle/sign detection & fusion | HLS color seg, RANSAC+DBSCAN, HOG template match |
+| Decision | `decision/` | Task scheduling, path smoothing, avoidance | FSM dispatch, curvature-constrained smooth, lateral offset |
+| Planning | `PathPlanning/` | Global planning & local avoidance | A\*, RRT (with smoothing), DWA (global path alignment) |
+| Control | `PathTracking/` | Lateral + longitudinal vehicle control | Stanley, Pure Pursuit, Fuzzy, MPC, DQN, Selector |
+| Localization | `Localization/` | Vehicle pose estimation | EKF (Joseph-form), Particle Filter, Covariance Intersection |
+| SLAM | `SLAM/` | Simultaneous localization & mapping | FastSLAM 2.0 (adaptive threshold), ICP (Huber kernel) |
+| System | `system/` | Vehicle sim & realtime framework | Bicycle model, dual-thread pipeline, Embedded C, ROS2 |
 
 ## Features
 
@@ -65,16 +85,26 @@ Intelligent vehicle autonomous driving software stack implementing a four-layer 
 - **ROS2**: Perception, planning, control nodes with ApproximateTimeSynchronizer
 - **Protobuf**: 6 message definitions (common, perception, decision, control, system, agent)
 
-## Requirements
+## Safety Features
+
+- Throttle/brake mutual exclusion (`if brake > 0.01: throttle = 0.0`)
+- EKF covariance explosion detection (reset when max(diag) > 100)
+- NaN guards in all estimators (fallback to prediction)
+- Obstacle coordinate validation (finite check)
+- ID collision prevention in multi-agent and tracker
+- Joseph-form covariance update (guarantees positive definiteness)
+
+## Quick Start
+
+### Requirements
 
 - Python >= 3.9
 - NumPy, SciPy, Matplotlib
-- OpenCV (cv2)
-- scikit-learn
+- OpenCV (cv2), scikit-learn
 - protobuf + grpcio-tools
 - pytest
 
-## Installation
+### Installation
 
 ```bash
 cd PyRobotics
@@ -84,9 +114,9 @@ pip install -r requirements/requirements.txt
 python -m grpc_tools.protoc -I=proto --python_out=generated proto/*.proto
 ```
 
-## Usage
+### Usage
 
-### Single Module Visualization
+#### Single Module Visualization
 
 Each module can be run independently with PythonRobotics-style interactive animation:
 
@@ -97,7 +127,7 @@ python Localization/ekf_localizer.py
 python SLAM/fast_slam.py
 ```
 
-### Main Loop Simulation
+#### Main Loop Simulation
 
 ```bash
 python main_loop.py
@@ -105,7 +135,7 @@ python main_loop.py
 
 Single-threaded 50Hz closed-loop: Perception → Decision → Control → Vehicle Sim.
 
-### Unit Tests
+#### Unit Tests
 
 ```bash
 python tests/test_all_modules.py
@@ -125,19 +155,10 @@ PyRobotics/
 ├── utils/               # Plot, angle, geometry helpers
 ├── generated/           # Protobuf generated Python code
 ├── proto/               # Protobuf message definitions
-├── tests/               # Unit tests (27 tests)
+├── tests/               # Unit tests
 ├── docs/                # Architecture, API reference, quick start
 └── requirements/        # Dependency list
 ```
-
-## Safety Features
-
-- Throttle/brake mutual exclusion (`if brake > 0.01: throttle = 0.0`)
-- EKF covariance explosion detection (reset when max(diag) > 100)
-- NaN guards in all estimators (fallback to prediction)
-- Obstacle coordinate validation (finite check)
-- ID collision prevention in multi-agent and tracker
-- Joseph-form covariance update (guarantees positive definiteness)
 
 ## Acknowledgments
 
