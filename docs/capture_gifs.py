@@ -83,7 +83,7 @@ def capture_dwa():
             ax.grid(True)
             _capture_frame(fig)
             plt.close(fig)
-        if np.hypot(x[0] - goal[0], x[1] - goal[1]) < 2.0:
+        if u[0] == 0.0 and u[1] == 0.0:
             break
     save_gif("dwa", duration=60)
 
