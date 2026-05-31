@@ -118,6 +118,8 @@ Processes 3D LiDAR point clouds through a **RANSAC ground plane removal → voxe
 
 ## Obstacle tracking
 
+<img src="docs/images/obstacle_tracking.gif" width="640" alt="Obstacle tracking">
+
 Maintains consistent track IDs across frames using **Hungarian algorithm for data association** combined with **Kalman filter for velocity estimation**. Handles track creation (new detections unmatched), persistence (matched with predicted position), and deletion (lost for N consecutive frames). Outputs tracked obstacle list with velocity vectors for prediction.
 
 ## Sign recognition
