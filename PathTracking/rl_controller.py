@@ -107,17 +107,25 @@ class _PathTrackEnv:
         dy2 = self.cy[min(k_idx + 1, len(self.cy) - 1)] - self.cy[max(k_idx - 1, 0)]
         curvature = np.clip(dy2 / max(dx2, 0.01), -1, 1)
 
+        dist_to_goal = np.sqrt((self.cx[-1] - self.x)**2 + (self.cy[-1] - self.y)**2)
+        goal_dir_final = np.arctan2(self.cy[-1] - self.y, self.cx[-1] - self.x) - self.theta
+
         return np.concatenate([scans / 10.0, [self.v / 10.0],
                                [np.sin(goal_dir), np.cos(goal_dir)],
-                               [lat_err, hdg_err, curvature]])
+                               [lat_err, hdg_err, curvature],
+                               [dist_to_goal / 50.0, np.sin(goal_dir_final), np.cos(goal_dir_final)]])
 
     def step(self, action):
-        steer_options = np.radians([-20, -10, 0, 10, 20])
+        dist_to_goal = np.sqrt((self.cx[-1] - self.x)**2 + (self.cy[-1] - self.y)**2)
+        if dist_to_goal < 5.0:
+            steer_options = np.radians([-10, -5, -2, 0, 2, 5, 10])
+        else:
+            steer_options = np.radians([-20, -13, -7, 0, 7, 13, 20])
         throttle_options = [0.2, 0.5, 0.8]
         steer = steer_options[action // 3]
         thr = throttle_options[action % 3]
 
-        accel = thr * 5.0 - 1.0
+        accel = thr * 5.0 - 0.5
         self.v = max(self.v + accel * self.dt, 0.0)
         self.v = min(self.v, 15.0)
         self.theta += self.v * np.tan(steer) / self.L * self.dt
@@ -142,6 +150,12 @@ class _PathTrackEnv:
         reward -= abs(lat_err) * 0.3
         reward -= abs(hdg_err) * 0.5
         reward -= 0.05
+        if self.v > 10.0:
+            reward -= (self.v - 10.0) * 0.2
+
+        dist_to_goal = np.sqrt((self.cx[-1] - self.x)**2 + (self.cy[-1] - self.y)**2)
+        if dist_to_goal < 3.0:
+            reward += 50.0 + (3.0 - dist_to_goal) * 20.0
 
         if self.idx_nearest >= len(self.cx) - 3:
             reward += 100.0
@@ -157,15 +171,15 @@ class _PathTrackEnv:
 
 # === Phase 3: DQN Training ===
 
-def train_dqn(n_episodes=800, save_path=None, lr=0.0005, batch_size=64, gamma=0.99):
+def train_dqn(n_episodes=800, save_path=None, lr=0.0003, batch_size=128, gamma=0.99):
     if save_path is None:
         save_path = os.path.join(_PROJECT_ROOT, "control", "dqn_weights.npz")
 
     rng = np.random.default_rng(42)
     env = _PathTrackEnv(rng)
 
-    n_obs = 22
-    n_act = 15
+    n_obs = 25
+    n_act = 21
     n_hidden1 = 128
     n_hidden2 = 64
 
@@ -184,9 +198,13 @@ def train_dqn(n_episodes=800, save_path=None, lr=0.0005, batch_size=64, gamma=0.
     replay = deque(maxlen=replay_max)
     epsilon = 1.0
     epsilon_min = 0.01
-    epsilon_decay = (1.0 - epsilon_min) / max(n_episodes, 1)
-    target_update = 200
+    epsilon_decay = 0.995
+    target_update = 500
     total_steps = 0
+    best_reward = -1e9
+    best_W1, best_b1 = W1.copy(), b1.copy()
+    best_W2, best_b2 = W2.copy(), b2.copy()
+    best_W3, best_b3 = W3.copy(), b3.copy()
 
     for ep in range(n_episodes):
         state = env.reset()
@@ -197,7 +215,7 @@ def train_dqn(n_episodes=800, save_path=None, lr=0.0005, batch_size=64, gamma=0.
                 action = rng.integers(0, n_act)
             else:
                 q, _, _ = _forward(state, W1, b1, W2, b2, W3, b3)
-                action = int(np.clip(np.argmax(q), 0, 5))
+                action = int(np.argmax(q))
 
             next_state, reward, done = env.step(action)
             ep_reward += reward
@@ -213,7 +231,9 @@ def train_dqn(n_episodes=800, save_path=None, lr=0.0005, batch_size=64, gamma=0.
                 d_batch = np.array([replay[i][4] for i in idx])
 
                 q2, _, _ = _forward(s2_batch, W1_t, b1_t, W2_t, b2_t, W3_t, b3_t)
-                target = r_batch + gamma * np.max(q2, axis=1) * (1.0 - d_batch)
+                q_online_next, _, _ = _forward(s2_batch, W1, b1, W2, b2, W3, b3)
+                best_actions = np.argmax(q_online_next, axis=1)
+                target = r_batch + gamma * q2[np.arange(batch_size), best_actions] * (1.0 - d_batch)
 
                 q_pred, h1, h2 = _forward(s_batch, W1, b1, W2, b2, W3, b3)
                 td_error = q_pred.copy()
@@ -246,12 +266,18 @@ def train_dqn(n_episodes=800, save_path=None, lr=0.0005, batch_size=64, gamma=0.
                 W2_t, b2_t = W2.copy(), b2.copy()
                 W3_t, b3_t = W3.copy(), b3.copy()
 
-        epsilon = max(epsilon - epsilon_decay, epsilon_min)
+        epsilon = max(epsilon * epsilon_decay, epsilon_min)
+
+        if ep_reward > best_reward:
+            best_reward = ep_reward
+            best_W1, best_b1 = W1.copy(), b1.copy()
+            best_W2, best_b2 = W2.copy(), b2.copy()
+            best_W3, best_b3 = W3.copy(), b3.copy()
 
         if (ep + 1) % 50 == 0:
-            print(f"[DQN] ep={ep + 1}/{n_episodes}  reward={ep_reward:.1f}  eps={epsilon:.3f}")
+            print(f"[DQN] ep={ep + 1}/{n_episodes}  reward={ep_reward:.1f}  eps={epsilon:.3f}  best={best_reward:.1f}")
 
-    np.savez(save_path, W1=W1, b1=b1, W2=W2, b2=b2, W3=W3, b3=b3)
+    np.savez(save_path, W1=best_W1, b1=best_b1, W2=best_W2, b2=best_b2, W3=best_W3, b3=best_b3)
     print(f"[DQN] Weights saved to {save_path}")
     return save_path
 
@@ -308,7 +334,7 @@ def rl_control(decision_output, speed_actual=0.0,
 
     n_path = len(decision_output.target_path)
     if n_path < 1:
-        obs = np.zeros(22)
+        obs = np.zeros(25)
     else:
         path_x_global = np.array([p.pose.x for p in decision_output.target_path])
         path_y_global = np.array([p.pose.y for p in decision_output.target_path])
@@ -320,31 +346,57 @@ def rl_control(decision_output, speed_actual=0.0,
         path_y_veh = -dx * sin_v + dy * cos_v
 
         angles = np.linspace(-np.pi / 2, np.pi / 2, 16)
-        scans = np.full(16, 5.0)
+        scans = np.full(16, 10.0)
         for i, a in enumerate(angles):
             ray_dx = np.cos(a)
             ray_dy = np.sin(a)
             proj = path_x_veh * ray_dx + path_y_veh * ray_dy
             perp = np.abs(-path_x_veh * ray_dy + path_y_veh * ray_dx)
-            valid = (proj > 0) & (proj < 5.0) & (perp < 1.0)
+            valid = (proj > 0) & (proj < 10.0) & (perp < 2.0)
             if valid.any():
                 scans[i] = float(np.min(proj[valid]))
 
-        lookahead_idx = min(15, n_path - 1)
-        goal_dir = np.arctan2(path_y_veh[lookahead_idx], path_x_veh[lookahead_idx])
-        obs = np.concatenate([scans / 5.0, [speed_actual / 5.0], [np.sin(goal_dir), np.cos(goal_dir)]])
+        idx_nearest = int(np.argmin(dx**2 + dy**2))
+        lookahead = min(idx_nearest + 15, n_path - 1)
+        goal_dir = np.arctan2(path_y_veh[lookahead], path_x_veh[lookahead])
+
+        lat_err = float(path_y_veh[idx_nearest]) / 5.0
+        hdg_err_raw = np.arctan2(
+            path_y_global[min(idx_nearest + 1, n_path - 1)] - path_y_global[max(idx_nearest - 1, 0)],
+            path_x_global[min(idx_nearest + 1, n_path - 1)] - path_x_global[max(idx_nearest - 1, 0)]
+        ) - vehicle_theta
+        hdg_err = np.arctan2(np.sin(hdg_err_raw), np.cos(hdg_err_raw)) / np.pi
+
+        k_idx = min(idx_nearest + 5, n_path - 1)
+        dx2 = path_x_global[min(k_idx + 1, n_path - 1)] - path_x_global[max(k_idx - 1, 0)]
+        dy2 = path_y_global[min(k_idx + 1, n_path - 1)] - path_y_global[max(k_idx - 1, 0)]
+        curvature = np.clip(dy2 / max(dx2, 0.01), -1, 1)
+
+        dist_to_goal = np.sqrt((path_x_global[-1] - vehicle_x)**2 + (path_y_global[-1] - vehicle_y)**2)
+        goal_dir_final = np.arctan2(path_y_global[-1] - vehicle_y, path_x_global[-1] - vehicle_x) - vehicle_theta
+
+        obs = np.concatenate([scans / 10.0, [speed_actual / 10.0],
+                              [np.sin(goal_dir), np.cos(goal_dir)],
+                              [lat_err, hdg_err, curvature],
+                              [dist_to_goal / 50.0, np.sin(goal_dir_final), np.cos(goal_dir_final)]])
 
     q, _, _ = _forward(obs, W1, b1, W2, b2, W3, b3)
     action = int(np.argmax(q))
 
-    steer_options = np.radians([-15, 0, 15])
-    throttle_options = [0.3, 0.7]
-    steer_deg = np.degrees(steer_options[action // 2])
-    throttle = throttle_options[action % 2]
+    steer_options = np.radians([-20, -13, -7, 0, 7, 13, 20])
+    throttle_options = [0.2, 0.5, 0.8]
+    if n_path >= 1:
+        dg = np.sqrt((path_x_global[-1] - vehicle_x)**2 + (path_y_global[-1] - vehicle_y)**2)
+        if dg < 5.0:
+            steer_options = np.radians([-10, -5, -2, 0, 2, 5, 10])
+    steer_deg = np.degrees(steer_options[action // 3])
+    throttle = throttle_options[action % 3]
 
     if rl_state is not None and "steer_ema" in rl_state:
         steer_ema = rl_state["steer_ema"]
-        steer_deg = 0.3 * steer_deg + 0.7 * steer_ema
+        delta = np.clip(steer_deg - steer_ema, -10.0, 10.0)
+        steer_deg = steer_ema + delta
+        steer_deg = 0.5 * steer_deg + 0.5 * steer_ema
     if rl_state is not None:
         rl_state["steer_ema"] = steer_deg
 
@@ -378,8 +430,8 @@ def main():
     rng = np.random.default_rng(42)
     env = _PathTrackEnv(rng)
 
-    n_obs_dim = 22
-    n_act_dim = 15
+    n_obs_dim = 25
+    n_act_dim = 21
     n_h1, n_h2 = 128, 64
 
     W1 = rng.normal(0, np.sqrt(2.0 / n_obs_dim), (n_obs_dim, n_h1))
@@ -400,8 +452,8 @@ def main():
     lr_dqn = 0.0005
     epsilon = 1.0
     epsilon_min = 0.05
-    epsilon_decay = (1.0 - epsilon_min) / max(n_episodes, 1)
-    target_update = 200
+    epsilon_decay = 0.995
+    target_update = 500
     total_steps = 0
     reward_hist = []
 
@@ -425,7 +477,9 @@ def main():
                 s2_b = np.array([replay[i][3] for i in idx])
                 d_b = np.array([replay[i][4] for i in idx])
                 q2, _, _ = _forward(s2_b, W1_t, b1_t, W2_t, b2_t, W3_t, b3_t)
-                target = r_b + gamma * np.max(q2, axis=1) * (1.0 - d_b)
+                q_online_next, _, _ = _forward(s2_b, W1, b1, W2, b2, W3, b3)
+                best_actions = np.argmax(q_online_next, axis=1)
+                target = r_b + gamma * q2[np.arange(batch_size), best_actions] * (1.0 - d_b)
                 q_pred, h1, h2 = _forward(s_b, W1, b1, W2, b2, W3, b3)
                 td = q_pred.copy()
                 td[np.arange(batch_size), a_b] = target
@@ -450,7 +504,7 @@ def main():
                 W1_t, b1_t = W1.copy(), b1.copy()
                 W2_t, b2_t = W2.copy(), b2.copy()
                 W3_t, b3_t = W3.copy(), b3.copy()
-        epsilon = max(epsilon - epsilon_decay, epsilon_min)
+        epsilon = max(epsilon * epsilon_decay, epsilon_min)
         reward_hist.append(ep_reward)
         if (ep + 1) % 50 == 0:
             print(f"[DQN] ep={ep + 1}/{n_episodes} reward={ep_reward:.1f} eps={epsilon:.3f}")
@@ -494,8 +548,8 @@ def main():
         p_dy = cy - y
         proj = np.outer(ray_dx, p_dx) + np.outer(ray_dy, p_dy)
         perp = np.abs(-np.outer(ray_dx, p_dy) + np.outer(ray_dy, p_dx))
-        valid = (proj > 0) & (proj < 5.0) & (perp < 1.0)
-        proj_masked = np.where(valid, proj, 5.0)
+        valid = (proj > 0) & (proj < 10.0) & (perp < 2.0)
+        proj_masked = np.where(valid, proj, 10.0)
         scans = np.min(proj_masked, axis=1)
 
         lookahead_idx = min(idx_nearest + 20, len(cx) - 1)
@@ -509,19 +563,26 @@ def main():
         dy2 = cy[min(k_idx + 1, len(cy) - 1)] - cy[max(k_idx - 1, 0)]
         curvature = np.clip(dy2 / max(dx2, 0.01), -1, 1)
 
+        dist_to_goal = np.sqrt((cx[-1] - x)**2 + (cy[-1] - y)**2)
+        goal_dir_final = np.arctan2(cy[-1] - y, cx[-1] - x) - yaw
+
         obs = np.concatenate([scans / 10.0, [v / 10.0],
                               [np.sin(goal_dir), np.cos(goal_dir)],
-                              [lat_err_norm, hdg_err, curvature]])
+                              [lat_err_norm, hdg_err, curvature],
+                              [dist_to_goal / 50.0, np.sin(goal_dir_final), np.cos(goal_dir_final)]])
 
         q, _, _ = _forward(obs, W1, b1, W2, b2, W3, b3)
         action = int(np.argmax(q))
 
-        steer_options = np.radians([-20, -10, 0, 10, 20])
+        steer_options = np.radians([-20, -13, -7, 0, 7, 13, 20])
         throttle_options = [0.2, 0.5, 0.8]
+        dg_demo = np.sqrt((cx[-1] - x)**2 + (cy[-1] - y)**2)
+        if dg_demo < 5.0:
+            steer_options = np.radians([-10, -5, -2, 0, 2, 5, 10])
         steer_rad = steer_options[action // 3]
         throttle = throttle_options[action % 3]
 
-        a_cmd = throttle * 5.0 - 1.0
+        a_cmd = throttle * 5.0 - 0.5
         x += v * np.cos(yaw) * dt_rl
         y += v * np.sin(yaw) * dt_rl
         yaw += v / L * np.tan(steer_rad) * dt_rl

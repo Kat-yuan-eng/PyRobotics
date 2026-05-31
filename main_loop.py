@@ -15,7 +15,7 @@ from perception.obstacle_detector import detect_obstacles, generate_test_point_c
 from perception.sign_recognizer import recognize_signs, generate_test_sign_image
 from perception.sensor_fusion import fuse_to_perception, default_camera_params
 from decision.task_scheduler import schedule, TASK_PATROL
-from PathTracking.controller_selector import select_controller, CTRL_STANLEY, ctrl_name
+from PathTracking.controller_selector import auto_select_controller, CTRL_STANLEY, ctrl_name
 from system.vehicle_sim import simulate_vehicle
 from Localization.ekf_localizer import ekf_localize
 
@@ -102,8 +102,8 @@ def run_main_loop(duration_s=SIM_DURATION_S):
             perception_out, scheduler_state, v_nominal=V_NOMINAL
         )
 
-        control_out, ctrl_state = select_controller(
-            CTRL_STANLEY, decision_out, v_actual, ctrl_state,
+        control_out, ctrl_state = auto_select_controller(
+            decision_out, v_actual, ctrl_state,
             vehicle_x=x_ekf[0], vehicle_y=x_ekf[1], vehicle_theta=x_ekf[2]
         )
 

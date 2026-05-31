@@ -45,6 +45,21 @@ def _gaussian_smooth(arr, sigma):
 # === Phase 4: Curvature (imported from utils.geometry) ===
 
 
+# === Phase 4b: Adaptive Smooth ===
+
+def _adaptive_smooth(xr, yr, sigma_lo, sigma_hi, kappa_thresh=0.05):
+    kappa = compute_curvature(xr, yr)
+    sx_lo = _gaussian_smooth(xr, sigma_lo)
+    sy_lo = _gaussian_smooth(yr, sigma_lo)
+    sx_hi = _gaussian_smooth(xr, sigma_hi)
+    sy_hi = _gaussian_smooth(yr, sigma_hi)
+    w = np.abs(kappa) / max(np.abs(kappa).max(), 1e-9)
+    w = np.clip(w / max(kappa_thresh, 1e-9), 0.0, 1.0)
+    sx = (1.0 - w) * sx_hi + w * sx_lo
+    sy = (1.0 - w) * sy_hi + w * sy_lo
+    return sx, sy
+
+
 # === Phase 5: Smooth Path ===
 
 def smooth_path(path_x, path_y, max_deviation=0.3, n_output=50):
@@ -80,8 +95,9 @@ def smooth_path(path_x, path_y, max_deviation=0.3, n_output=50):
         else:
             hi = mid
 
-    sx = _gaussian_smooth(xr, best_sigma)
-    sy = _gaussian_smooth(yr, best_sigma)
+    sx, sy = _adaptive_smooth(xr, yr, best_sigma * 0.3, best_sigma)
+    sx[0], sy[0] = xr[0], yr[0]
+    sx[-1], sy[-1] = xr[-1], yr[-1]
     for i in range(1, len(sx)):
         if sx[i] <= sx[i - 1]:
             sx[i] = sx[i - 1] + 1e-6

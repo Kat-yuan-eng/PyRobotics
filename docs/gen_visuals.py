@@ -195,29 +195,18 @@ def gen_multi_agent():
 
 # === 6. DQN Control GIF ===
 def gen_dqn_control():
-    from PathTracking.rl_controller import _PathTrackEnv, _forward, _relu_grad
+    from PathTracking.rl_controller import _PathTrackEnv, _forward
+    weights_path = os.path.join(os.path.dirname(__file__), "..", "control", "dqn_weights.npz")
+    if not os.path.exists(weights_path):
+        print("  [DQN] No trained weights found, skipping")
+        return
+    data = np.load(weights_path)
+    W1, b1, W2, b2, W3, b3 = data['W1'], data['b1'], data['W2'], data['b2'], data['W3'], data['b3']
     rng = np.random.default_rng(42)
     env = _PathTrackEnv(rng)
-    test_obs = env.reset()
-    n_obs_dim = len(test_obs)
-    n_act_dim = 15
-    n_h1, n_h2 = 128, 64
-    W1 = rng.normal(0, np.sqrt(2.0 / n_obs_dim), (n_obs_dim, n_h1))
-    b1 = np.zeros(n_h1)
-    W2 = rng.normal(0, np.sqrt(2.0 / n_h1), (n_h1, n_h2))
-    b2 = np.zeros(n_h2)
-    W3 = rng.normal(0, np.sqrt(2.0 / n_h2), (n_h2, n_act_dim))
-    b3 = np.zeros(n_act_dim)
-    for _ in range(50):
-        state = env.reset()
-        while not env.done:
-            q, _, _ = _forward(state, W1, b1, W2, b2, W3, b3)
-            action = int(np.argmax(q))
-            next_state, reward, done = env.step(action)
-            state = next_state
     state = env.reset()
     x_hist, y_hist = [env.x], [env.y]
-    for step in range(200):
+    for step in range(500):
         q, _, _ = _forward(state, W1, b1, W2, b2, W3, b3)
         action = int(np.argmax(q))
         state, reward, done = env.step(action)
@@ -238,50 +227,80 @@ def gen_dqn_control():
             _capture_frame(fig)
             plt.close(fig)
         if done:
+            for _ in range(5):
+                fig, ax = plt.subplots(figsize=(8, 6))
+                ax.plot(env.cx, env.cy, '-r', linewidth=1, alpha=0.5, label='Reference')
+                ax.plot(x_hist, y_hist, '-b', linewidth=1.5, label='DQN Path')
+                ax.plot(env.x, env.y, 'ko', markersize=8)
+                ax.plot(env.cx[-1], env.cy[-1], 'g*', markersize=12, label='Goal')
+                ax.set_title('DQN Path Tracking — Goal Reached!')
+                ax.legend(frameon=True, fancybox=True)
+                ax.grid(True)
+                ax.axis('equal')
+                ax.set_xlabel('x [m]')
+                ax.set_ylabel('y [m]')
+                _capture_frame(fig)
+                plt.close(fig)
             break
     _save_gif("dqn_control", duration=100)
 
 
 # === 7. Controller Selection GIF ===
 def gen_controller_selection():
+    from PathTracking.controller_selector import auto_select_controller, ctrl_name
     from utils.plot import generate_serpentine_course
+    from generated import DecisionOutput, Behavior
+
     cx, cy, cyaw, ck = generate_serpentine_course(ds=0.1)
     dt = 0.1
     L = 2.9
-    x, y, yaw, v = cx[0], cy[0], cyaw[0], 0.0
+    x, y, yaw, v = cx[0], cy[0], cyaw[0], 2.0
     x_hist, y_hist = [x], [y]
     ctrl_hist = []
-    for step in range(200):
-        dx = cx - x
-        dy = cy - y
-        dists = dx**2 + dy**2
-        idx = int(np.argmin(dists))
-        kappa_local = abs(ck[min(idx, len(ck)-1)])
-        if v > 5.0:
-            ctrl_name = "Stanley"
-            steer = np.radians(-5.0)
-        elif kappa_local > 0.05:
-            ctrl_name = "Fuzzy"
-            steer = np.radians(-8.0)
-        else:
-            ctrl_name = "PurePursuit"
-            steer = np.radians(-3.0)
-        throttle = 0.5
-        v += throttle * dt
+    state = None
+
+    for step in range(500):
+        decision = DecisionOutput()
+        decision.header.seq = step
+        decision.behavior = Behavior.Value("BEHAVIOR_LANE_KEEP")
+        decision.target_speed = 5.0
+        n_path = len(cx)
+        for i in range(n_path):
+            pp = decision.target_path.add()
+            pp.pose.x = float(cx[i])
+            pp.pose.y = float(cy[i])
+            pp.pose.theta = float(cyaw[i])
+            pp.curvature = float(ck[i])
+
+        ctrl_out, state = auto_select_controller(
+            decision, v, state,
+            vehicle_x=x, vehicle_y=y, vehicle_theta=yaw, dt=dt
+        )
+        steer = np.radians(ctrl_out.steering.steering_angle)
+        throttle = ctrl_out.throttle_brake.throttle
+        brake = ctrl_out.throttle_brake.brake
+
+        accel = throttle * 3.0 - brake * 5.0
+        v = max(v + accel * dt, 0.0)
         v = min(v, 8.0)
         x += v * np.cos(yaw) * dt
         y += v * np.sin(yaw) * dt
         yaw += v / L * np.tan(steer) * dt
         x_hist.append(x)
         y_hist.append(y)
-        ctrl_hist.append(ctrl_name)
+
+        current_ctrl = ctrl_name(state.get("type", 0))
+        ctrl_hist.append(current_ctrl)
+
         if step % 5 == 0:
             fig, ax = plt.subplots(figsize=(8, 6))
             ax.plot(cx, cy, '.r', markersize=1, alpha=0.3, label='Reference')
             ax.plot(x_hist, y_hist, '-b', linewidth=1.5, label='Trajectory')
             ax.plot(x, y, 'ko', markersize=8)
-            color_map = {"Stanley": "blue", "Fuzzy": "red", "PurePursuit": "green"}
-            ax.set_title(f'Controller Selection — {ctrl_name}', color=color_map.get(ctrl_name, "black"))
+            color_map = {"PurePursuit": "green", "Stanley": "blue",
+                         "Fuzzy": "orange", "MPC": "red", "RL": "purple"}
+            ax.set_title(f'Controller Selection — {current_ctrl}',
+                         color=color_map.get(current_ctrl, "black"))
             ax.legend(frameon=True, fancybox=True)
             ax.grid(True)
             ax.axis('equal')
@@ -289,8 +308,26 @@ def gen_controller_selection():
             ax.set_ylabel('y [m]')
             _capture_frame(fig)
             plt.close(fig)
+
+        idx = int(np.argmin((cx - x)**2 + (cy - y)**2))
         if idx >= len(cx) - 5:
+            for _ in range(5):
+                fig, ax = plt.subplots(figsize=(8, 6))
+                ax.plot(cx, cy, '.r', markersize=1, alpha=0.3, label='Reference')
+                ax.plot(x_hist, y_hist, '-b', linewidth=1.5, label='Trajectory')
+                ax.plot(x, y, 'ko', markersize=8)
+                ax.plot(cx[-1], cy[-1], 'g*', markersize=12, label='Goal')
+                ax.set_title(f'Controller Selection — Goal Reached! ({current_ctrl})',
+                             color=color_map.get(current_ctrl, "black"))
+                ax.legend(frameon=True, fancybox=True)
+                ax.grid(True)
+                ax.axis('equal')
+                ax.set_xlabel('x [m]')
+                ax.set_ylabel('y [m]')
+                _capture_frame(fig)
+                plt.close(fig)
             break
+
     _save_gif("controller_selection", duration=80)
 
 

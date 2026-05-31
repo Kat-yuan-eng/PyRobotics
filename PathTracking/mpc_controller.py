@@ -111,7 +111,7 @@ def _numerical_gradient(x0, y0, theta0, v0, deltas, accels, L, dt_mpc,
 
 def mpc_control(decision_output, speed_actual=0.0,
                 wheelbase=2.7, max_steer_deg=30.0,
-                N=10, dt_mpc=0.1,
+                N=20, dt_mpc=0.1,
                 w_y=3.0, w_theta=2.0, w_v=1.0,
                 w_delta=0.1, w_a=0.1, w_deltadot=0.5,
                 mpc_state=None, dt=0.02,

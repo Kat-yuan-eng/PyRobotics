@@ -36,8 +36,8 @@ def select_controller(ctrl_type, decision_output, speed_actual, state,
         state = {"prev_steer": prev_steer, "bumpless_steer": prev_steer}
     if ctrl_type == CTRL_PURE_PURSUIT:
         pid_state = state.get("pid", None) if state else None
-        if pid_state is None and "bumpless_steer" in (state or {}):
-            pid_state = {"prev_steer": state["bumpless_steer"]}
+        if pid_state is None:
+            pid_state = (0.0, 0.0)
         ctrl_out, new_pid = pure_pursuit_control(
             decision_output, speed_actual=speed_actual,
             vehicle_x=vehicle_x, vehicle_y=vehicle_y, vehicle_theta=vehicle_theta,
@@ -105,3 +105,41 @@ def select_controller(ctrl_type, decision_output, speed_actual, state,
 
 def ctrl_name(ctrl_type):
     return _CTRL_NAMES.get(ctrl_type, "Unknown")
+
+
+def auto_select_controller(decision_output, speed_actual, state,
+                           vehicle_x=0.0, vehicle_y=0.0, vehicle_theta=0.0, dt=0.02):
+    n_path = len(decision_output.target_path)
+    if n_path < 1:
+        return select_controller(CTRL_STANLEY, decision_output, speed_actual, state,
+                                 vehicle_x, vehicle_y, vehicle_theta, dt)
+
+    path_x = np.array([p.pose.x for p in decision_output.target_path])
+    path_y = np.array([p.pose.y for p in decision_output.target_path])
+    dx = path_x - vehicle_x
+    dy = path_y - vehicle_y
+    idx_nearest = int(np.argmin(dx**2 + dy**2))
+
+    kappas = [abs(decision_output.target_path[min(i, n_path - 1)].curvature)
+              for i in range(idx_nearest, min(idx_nearest + 20, n_path))]
+    kappa_max = max(kappas) if kappas else 0.0
+
+    lookahead = min(idx_nearest + 10, n_path - 1)
+    dist_to_end = np.sqrt((path_x[lookahead] - path_x[-1])**2 +
+                          (path_y[lookahead] - path_y[-1])**2)
+
+    if speed_actual < 1.0:
+        ctrl_type = CTRL_STANLEY
+    elif kappa_max > 0.15:
+        ctrl_type = CTRL_MPC
+    elif kappa_max > 0.03:
+        ctrl_type = CTRL_PURE_PURSUIT
+    elif speed_actual > 8.0:
+        ctrl_type = CTRL_PURE_PURSUIT
+    elif dist_to_end < 5.0:
+        ctrl_type = CTRL_STANLEY
+    else:
+        ctrl_type = CTRL_PURE_PURSUIT
+
+    return select_controller(ctrl_type, decision_output, speed_actual, state,
+                             vehicle_x, vehicle_y, vehicle_theta, dt)

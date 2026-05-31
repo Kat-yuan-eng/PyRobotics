@@ -222,13 +222,13 @@ Reference: [Graichen, 2017](http://grauonline.de/wordpress/?page_id=3244)
 
 <img src="docs/images/dqn_control.gif" width="640" alt="DQN control">
 
-Reinforcement learning-based controller training a **Deep Q-Network** to map state observations (cross-track error, heading error, path curvature, speed) to discrete steering actions. Post-training inference applies **exponential moving average smoothing (α=0.3)** to reduce action jitter, plus a **safety override filter** that clips actions when lateral error exceeds critical thresholds. Training reward combines path-following accuracy and smoothness penalties.
+Reinforcement learning-based controller training a **Deep Q-Network** to map state observations (16-beam path scans, speed, heading, lateral error, heading error, curvature, goal distance, goal direction) to discrete steering and throttle actions. Implements **Double DQN** (online network selects actions, target network evaluates Q-values) to reduce overestimation bias. Uses **curvature-adaptive action space** — fine-grained steering (±2°, ±5°, ±10°) near the goal for precision, coarser steering (±7°, ±13°, ±20°) elsewhere for efficiency. Training reward includes progressive goal proximity bonus within 3m and speed penalty above 10 m/s.
 
 ## Controller selection
 
 <img src="docs/images/controller_selection.gif" width="640" alt="Controller selection">
 
-Adaptive switching logic choosing among Stanley, Pure Pursuit, and Fuzzy based on **current speed and path curvature**. High speed → Stanley (stable at cruise), medium speed → Pure Pursuit (balanced), low speed/high curvature → Fuzzy (handles sharp turns). Implements **Bumpless Transfer** by passing the previous steering angle as initial condition to the newly activated controller, preventing discontinuous steering jumps during handoff.
+Adaptive switching logic choosing among Stanley, Pure Pursuit, Fuzzy, MPC, and DQN based on **path curvature and vehicle speed**. Curvature-adaptive selection: κ>0.15 → MPC (extreme curves), κ>0.03 → Pure Pursuit (best curve accuracy, RMS 0.15m), high speed → Pure Pursuit (stability), low speed → Stanley (stable startup), near goal → Stanley (precise arrival). Implements **Bumpless Transfer** by passing the previous steering angle as initial condition to the newly activated controller, preventing discontinuous steering jumps during handoff.
 
 # Localization
 
