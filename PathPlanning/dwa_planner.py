@@ -32,14 +32,17 @@ def predict_trajectory(x_init, v, yaw_rate, dt, predict_time):
 
 # === Phase 3: Cost Functions ===
 
-def calc_to_goal_cost(trajectory, goal):
+def calc_to_goal_cost(trajectory, goal, dist_to_goal=None):
     dx = goal[0] - trajectory[-1, 0]
     dy = goal[1] - trajectory[-1, 1]
     dist = np.hypot(dx, dy)
     angle_to_goal = np.arctan2(dy, dx)
     angle_diff = trajectory[-1, 2] - angle_to_goal
     angle_diff = np.arctan2(np.sin(angle_diff), np.cos(angle_diff))
-    return dist + abs(angle_diff) * 0.5
+    angle_weight = 0.5
+    if dist_to_goal is not None and dist_to_goal < 10.0:
+        angle_weight = 0.5 + 2.0 * max(0.0, 1.0 - dist_to_goal / 10.0)
+    return dist + abs(angle_diff) * angle_weight
 
 def calc_path_cost(trajectory, global_path):
     if len(global_path) == 0:
@@ -76,9 +79,11 @@ def dwa_plan(x_state, goal, ob, max_speed=1.0, min_speed=-0.5,
     yaw_rate_res_rad = np.deg2rad(yaw_rate_resolution)
 
     if goal_threshold is None:
-        goal_threshold = robot_radius * 2.0
+        goal_threshold = max(robot_radius * 2.0, max_speed * dt * 5.0)
 
-    if np.hypot(x_state[0] - goal[0], x_state[1] - goal[1]) < goal_threshold:
+    dist_to_goal = np.hypot(x_state[0] - goal[0], x_state[1] - goal[1])
+
+    if dist_to_goal < goal_threshold:
         stats = {"planner": "DWA", "path_length": 0.0, "planning_time_ms": 0.0,
                  "nodes_explored": 0, "path_points": 1}
         return np.array([0.0, 0.0]), x_state.reshape(1, -1), stats
@@ -93,12 +98,17 @@ def dwa_plan(x_state, goal, ob, max_speed=1.0, min_speed=-0.5,
     best_traj_emergency = np.array([x_state])
     max_min_dist = -1.0
 
+    predict_dist = max_speed * predict_time
+    approach_ratio = min(dist_to_goal / max(predict_dist, 1e-9), 1.0)
+    adaptive_goal_gain = to_goal_cost_gain * (1.0 + 2.0 * (1.0 - approach_ratio))
+    adaptive_speed_gain = speed_cost_gain * approach_ratio
+
     for v in np.arange(dw[0], dw[1], v_resolution):
         for yw in np.arange(dw[2], dw[3], yaw_rate_res_rad):
             traj = predict_trajectory(x_state, v, yw, dt, predict_time)
 
-            goal_cost = to_goal_cost_gain * calc_to_goal_cost(traj, goal)
-            speed_cost = speed_cost_gain * abs(max_speed - abs(traj[-1, 3]))
+            goal_cost = adaptive_goal_gain * calc_to_goal_cost(traj, goal, dist_to_goal)
+            speed_cost = adaptive_speed_gain * abs(max_speed - abs(traj[-1, 3]))
             ob_cost, min_dist = calc_obstacle_cost(traj, ob, robot_radius)
             ob_cost = obstacle_cost_gain * ob_cost
             p_cost = path_cost_gain * calc_path_cost(traj, global_path) if global_path is not None else 0.0

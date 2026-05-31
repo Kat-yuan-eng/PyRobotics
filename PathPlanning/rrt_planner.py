@@ -41,10 +41,29 @@ def _extract_path(nodes_x, nodes_y, parents):
     path_y.reverse()
     return path_x, path_y
 
+# === Phase 2b: Path Shortcut ===
+
+def _shortcut_path(path_x, path_y, obstacle_list, robot_radius, path_resolution=0.5):
+    if len(path_x) <= 2:
+        return path_x, path_y
+    px, py = list(path_x), list(path_y)
+    i = 0
+    while i < len(px) - 2:
+        j = len(px) - 1
+        while j > i + 1:
+            if not _check_path_collision(px[i], py[i], px[j], py[j],
+                                         obstacle_list, robot_radius, path_resolution):
+                del px[i + 1:j]
+                del py[i + 1:j]
+                break
+            j -= 1
+        i += 1
+    return px, py
+
 # === Phase 3: RRT Planning ===
 
 def rrt_plan(sx, sy, gx, gy, obstacle_list, rand_area,
-             expand_dis=3.0, path_resolution=0.5, goal_sample_rate=5,
+             expand_dis=3.0, path_resolution=0.5, goal_sample_rate=10,
              max_iter=500, robot_radius=0.8):
     t0 = time.perf_counter()
     rng = np.random.default_rng()
@@ -89,6 +108,7 @@ def rrt_plan(sx, sy, gx, gy, obstacle_list, rand_area,
                 parents.append(len(nodes_x) - 2)
 
                 path_x, path_y = _extract_path(nodes_x, nodes_y, parents)
+                path_x, path_y = _shortcut_path(path_x, path_y, obstacle_list, robot_radius, path_resolution)
                 path_x_arr, path_y_arr = np.array(path_x), np.array(path_y)
                 if len(path_x_arr) >= 3:
                     try:
