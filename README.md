@@ -170,7 +170,7 @@ Reference: [Wikipedia](https://en.wikipedia.org/wiki/Rapidly-exploring_random_tr
 
 ## Dynamic Window Approach
 
-<img src="docs/images/dwa.gif" width="640" alt="DWA path planning">
+<img src="docs/images/dwa.png" width="640" alt="DWA path planning">
 
 Local planner evaluating **admissible velocity pairs (v, ω)** within the dynamic window defined by kinematic limits and acceleration constraints. Scores each candidate on heading error, obstacle clearance, velocity progress, and **global path alignment cost** (penalizes deviation from the global reference path). Selects the highest-scoring velocity command for the next control cycle.
 
@@ -244,7 +244,7 @@ Combines EKF and PF estimates into a **consistent fused estimate without requiri
 
 ## FastSLAM 2.0
 
-<img src="docs/images/fastslam.png" width="640" alt="FastSLAM 2.0">
+<img src="docs/images/fastslam.gif" width="640" alt="FastSLAM 2.0">
 
 Particle-based SLAM where **each particle carries its own EKF-based landmark map**. Landmark initialization uses a minimum-distance gate; data association solves via nearest-neighbor with Mahalanobis distance chi-squared test. Features **Joseph-form landmark update** (same numerical robustness as localization EKF) and **adaptive resampling threshold** based on EMA of effective sample size N_eff — resamples only when particle diversity drops below threshold, avoiding unnecessary computation.
 
@@ -252,7 +252,7 @@ Reference: [Probabilistic Robotics, Ch. 13](http://www.probabilistic-robotics.or
 
 ## ICP matching
 
-<img src="docs/images/icp.png" width="640" alt="ICP matching">
+<img src="docs/images/icp.gif" width="640" alt="ICP matching">
 
 Point cloud registration finding the **optimal rigid transformation (R, t)** aligning source points to target via iterative closest point correspondence. Each iteration: (1) find nearest neighbors, (2) compute SVD-based optimal transform, (3) apply transform, (4) check convergence. Supports **initial pose guess** for faster convergence and **Huber robust kernel** to downweight outlier correspondences. Terminates when translation change < ε_t or rotation change < ε_r.
 
