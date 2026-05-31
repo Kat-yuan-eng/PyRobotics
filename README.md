@@ -170,7 +170,7 @@ Reference: [Wikipedia](https://en.wikipedia.org/wiki/Rapidly-exploring_random_tr
 
 ## Dynamic Window Approach
 
-<img src="docs/images/dwa.png" width="640" alt="DWA path planning">
+<img src="docs/images/dwa.gif" width="640" alt="DWA path planning">
 
 Local planner evaluating **admissible velocity pairs (v, ω)** within the dynamic window defined by kinematic limits and acceleration constraints. Scores each candidate on heading error, obstacle clearance, velocity progress, and **global path alignment cost** (penalizes deviation from the global reference path). Selects the highest-scoring velocity command for the next control cycle.
 
@@ -180,7 +180,7 @@ Reference: [Fox et al., 1997](https://www.ri.cmu.edu/pub_files/pub1/fox_dieter_1
 
 ## Stanley control
 
-<img src="docs/images/stanley.png" width="640" alt="Stanley control">
+<img src="docs/images/stanley.gif" width="640" alt="Stanley control">
 
 Geometric steering law computing **cross-track error feedback at the front axle**: δ = θ_e + arctan(k·e / v). The heading error term (θ_e) aligns the vehicle orientation with the path tangent; the cross-track term (e/v) provides proportional correction scaled inversely with speed for stability at low speeds. Combined with PID longitudinal control for speed tracking. Proven on Stanford's DARPA Grand Challenge winner.
 
@@ -188,7 +188,7 @@ Reference: [Thrun et al., 2006](http://robots.stanford.edu/papers/thrun.stanley0
 
 ## Pure Pursuit control
 
-<img src="docs/images/pure_pursuit.png" width="640" alt="Pure Pursuit control">
+<img src="docs/images/pure_pursuit.gif" width="640" alt="Pure Pursuit control">
 
 Lookahead-based geometric tracker selecting a **goal point on the reference path at distance L_d ahead** of the vehicle, then computing steering to drive toward that point. Lookahead distance is typically proportional to speed (L_d = k·v) for natural corner-cutting behavior at higher speeds. Simple, robust, and widely used as a baseline controller.
 
@@ -196,13 +196,13 @@ Reference: [Coulter, 1992](https://www.ri.cmu.edu/pub_files/pub3/coulter_r_craig
 
 ## Fuzzy control
 
-<img src="docs/images/fuzzy.png" width="640" alt="Fuzzy control">
+<img src="docs/images/fuzzy.gif" width="640" alt="Fuzzy control">
 
 **Curvature-adaptive fuzzy logic controller** taking road curvature (κ) and speed deviation (Δv) as inputs. Uses 3 membership functions for curvature (straight/gentle/sharp) and 5 for speed deviation (large_neg/neg/zero/pos/large_pos) with complete overlap to eliminate boundary dead zones. A 3×5 rule base maps input combinations to steering angle and throttle output. Excels in low-speed, high-curvature scenarios where model-based controllers struggle.
 
 ## Model predictive control
 
-<img src="docs/images/mpc.png" width="640" alt="MPC control">
+<img src="docs/images/mpc.gif" width="640" alt="MPC control">
 
 Optimal control solving a **constrained optimization over a receding horizon**. Linearizes the bicycle model around the current state at each timestep, then minimizes a quadratic cost function penalizing cross-track error, heading error, steering effort, and terminal state deviation. Explicitly handles steering rate and acceleration constraints. Iterative linear MPC with warm-start from previous solution for real-time performance.
 
@@ -220,7 +220,7 @@ Adaptive switching logic choosing among Stanley, Pure Pursuit, and Fuzzy based o
 
 ## Extended Kalman Filter localization
 
-<img src="docs/images/ekf.png" width="640" alt="EKF localization">
+<img src="docs/images/ekf.gif" width="640" alt="EKF localization">
 
 Sensor fusion estimator combining **wheel odometry prediction** with **GPS/IMU observation updates** via first-order Taylor linearization. Uses **Joseph-form covariance update** (P = (I-KH)·P_pre·(I-KH)^T + K·R·K^T) which guarantees positive semi-definiteness even under numerical errors. Includes covariance explosion detection — resets P matrix when max(diag(P)) > 100 to prevent filter divergence from bad observations.
 
@@ -228,7 +228,7 @@ Reference: [Probabilistic Robotics, Ch. 7](http://www.probabilistic-robotics.org
 
 ## Particle filter localization
 
-<img src="docs/images/particle_filter.png" width="640" alt="Particle filter localization">
+<img src="docs/images/particle_filter.gif" width="640" alt="Particle filter localization">
 
 Monte Carlo localization maintaining **N particles representing pose hypotheses**, weighted by observation likelihood. Prediction step propagates particles through motion model; update step reweights by sensor measurement probability. Uses **systematic resampling** to prevent particle degeneracy, with NaN-safe weight normalization to handle zero-likelihood edge cases. Visualization shows particle cloud converging toward ground truth over time.
 
@@ -236,7 +236,7 @@ Reference: [Probabilistic Robotics, Ch. 8](http://www.probabilistic-robotics.org
 
 ## Covariance Intersection fusion
 
-<img src="docs/images/fusion.png" width="640" alt="Covariance Intersection fusion">
+<img src="docs/images/fusion.gif" width="640" alt="Covariance Intersection fusion">
 
 Combines EKF and PF estimates into a **consistent fused estimate without requiring cross-correlation knowledge**. CI finds optimal convex combination weights (ω, 1-ω) minimizing the trace of fused covariance: P_fuse = ω·P_EKF + (1-ω)·PF_PF. Includes divergence detection — if one estimator's innovation exceeds 3σ threshold for consecutive steps, falls back to the more consistent estimator alone.
 
