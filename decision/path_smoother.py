@@ -37,7 +37,9 @@ def _gaussian_smooth(arr, sigma):
     if radius < 1:
         return arr.copy()
     kernel = _gaussian_kernel(sigma, radius)
-    return np.convolve(arr, kernel, mode="same")
+    padded = np.concatenate([arr[1:radius + 1][::-1], arr, arr[-radius - 1:-1][::-1]])
+    smoothed = np.convolve(padded, kernel, mode="same")
+    return smoothed[radius:radius + len(arr)]
 
 
 # === Phase 4: Curvature (imported from utils.geometry) ===
@@ -80,6 +82,9 @@ def smooth_path(path_x, path_y, max_deviation=0.3, n_output=50):
 
     sx = _gaussian_smooth(xr, best_sigma)
     sy = _gaussian_smooth(yr, best_sigma)
+    for i in range(1, len(sx)):
+        if sx[i] <= sx[i - 1]:
+            sx[i] = sx[i - 1] + 1e-6
     kappa = compute_curvature(sx, sy)
     return sx, sy, kappa
 

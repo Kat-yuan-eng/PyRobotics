@@ -195,17 +195,18 @@ def gen_multi_agent():
 
 # === 6. DQN Control GIF ===
 def gen_dqn_control():
-    from PathTracking.rl_controller import _GridWorld, _forward, _relu_grad
+    from PathTracking.rl_controller import _PathTrackEnv, _forward, _relu_grad
     rng = np.random.default_rng(42)
-    env = _GridWorld(rng)
+    env = _PathTrackEnv(rng)
     test_obs = env.reset()
     n_obs_dim = len(test_obs)
-    n_act_dim, n_h1, n_h2 = 6, 64, 32
-    W1 = rng.normal(0, 0.1, (n_obs_dim, n_h1))
+    n_act_dim = 15
+    n_h1, n_h2 = 128, 64
+    W1 = rng.normal(0, np.sqrt(2.0 / n_obs_dim), (n_obs_dim, n_h1))
     b1 = np.zeros(n_h1)
-    W2 = rng.normal(0, 0.1, (n_h1, n_h2))
+    W2 = rng.normal(0, np.sqrt(2.0 / n_h1), (n_h1, n_h2))
     b2 = np.zeros(n_h2)
-    W3 = rng.normal(0, 0.1, (n_h2, n_act_dim))
+    W3 = rng.normal(0, np.sqrt(2.0 / n_h2), (n_h2, n_act_dim))
     b3 = np.zeros(n_act_dim)
     for _ in range(50):
         state = env.reset()
@@ -216,28 +217,24 @@ def gen_dqn_control():
             state = next_state
     state = env.reset()
     x_hist, y_hist = [env.x], [env.y]
-    for step in range(100):
+    for step in range(200):
         q, _, _ = _forward(state, W1, b1, W2, b2, W3, b3)
         action = int(np.argmax(q))
         state, reward, done = env.step(action)
         x_hist.append(env.x)
         y_hist.append(env.y)
-        if step % 2 == 0:
-            fig, ax = plt.subplots(figsize=(6, 5))
-            ax.set_xlim(-0.5, 10.5)
-            ax.set_ylim(-0.5, 10.5)
-            for j in range(env.n_obs):
-                rect = plt.Rectangle(
-                    (env.obs_x[j] - env.obs_w[j]/2, env.obs_y[j] - env.obs_h[j]/2),
-                    env.obs_w[j], env.obs_h[j], color='gray', alpha=0.5)
-                ax.add_patch(rect)
+        if step % 3 == 0:
+            fig, ax = plt.subplots(figsize=(8, 6))
+            ax.plot(env.cx, env.cy, '-r', linewidth=1, alpha=0.5, label='Reference')
             ax.plot(x_hist, y_hist, '-b', linewidth=1.5, label='DQN Path')
-            ax.plot(env.x, env.y, 'ro', markersize=8)
-            ax.plot(9.0, 5.0, 'g*', markersize=12, label='Goal')
-            ax.set_title(f'DQN Control — Step {step}')
+            ax.plot(env.x, env.y, 'ko', markersize=8)
+            ax.plot(env.cx[-1], env.cy[-1], 'g*', markersize=12, label='Goal')
+            ax.set_title(f'DQN Path Tracking — Step {step}')
             ax.legend(frameon=True, fancybox=True)
             ax.grid(True)
             ax.axis('equal')
+            ax.set_xlabel('x [m]')
+            ax.set_ylabel('y [m]')
             _capture_frame(fig)
             plt.close(fig)
         if done:

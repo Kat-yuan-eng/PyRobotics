@@ -35,88 +35,124 @@ def _forward(x, W1, b1, W2, b2, W3, b3):
 
 # === Phase 2: Environment ===
 
-class _GridWorld:
+class _PathTrackEnv:
     def __init__(self, rng=None):
         self.rng = rng or np.random.default_rng(42)
+        self.L = 2.7
+        self.dt = 0.1
         self.reset()
 
+    def _generate_path(self):
+        n_pts = 80
+        t = np.linspace(0, 1, n_pts)
+        self.cx = t * 50.0
+        amp = self.rng.uniform(3.0, 8.0)
+        freq = self.rng.uniform(1.0, 3.0)
+        phase = self.rng.uniform(0, 2 * np.pi)
+        self.cy = 15.0 + amp * np.sin(freq * 2 * np.pi * t + phase)
+        dx = np.diff(self.cx)
+        dy = np.diff(self.cy)
+        self.cyaw = np.arctan2(dy, dx)
+        self.cyaw = np.concatenate([self.cyaw, [self.cyaw[-1]]])
+        ds = np.sqrt(dx**2 + dy**2)
+        self.s_cum = np.concatenate([[0], np.cumsum(ds)])
+
     def reset(self):
-        self.x = 0.5
-        self.y = 5.0
-        self.theta = 0.0
+        self._generate_path()
+        self.x = self.cx[0]
+        self.y = self.cy[0]
+        self.theta = self.cyaw[0]
         self.v = 0.0
-        self.n_obs = self.rng.integers(3, 6)
-        self.obs_x = self.rng.uniform(2.0, 8.0, self.n_obs)
-        self.obs_y = self.rng.uniform(1.0, 9.0, self.n_obs)
-        self.obs_w = self.rng.uniform(0.3, 0.8, self.n_obs)
-        self.obs_h = self.rng.uniform(0.3, 0.8, self.n_obs)
         self.done = False
         self.steps = 0
+        self.idx_nearest = 0
         return self._obs()
 
-    def _obs(self):
-        angles = np.linspace(-np.pi / 2, np.pi / 2, 16)
-        scans = np.full(16, 5.0)
-        for i, a in enumerate(angles):
-            for d in np.arange(0.1, 5.0, 0.1):
-                px = self.x + d * np.cos(self.theta + a)
-                py = self.y + d * np.sin(self.theta + a)
-                if px < 0 or px > 10 or py < 0 or py > 10:
-                    scans[i] = d
-                    break
-                hit = False
-                for j in range(self.n_obs):
-                    if (abs(px - self.obs_x[j]) < self.obs_w[j] / 2 and
-                            abs(py - self.obs_y[j]) < self.obs_h[j] / 2):
-                        scans[i] = d
-                        hit = True
-                        break
-                if hit:
-                    break
+    def _find_nearest(self):
+        dx = self.cx - self.x
+        dy = self.cy - self.y
+        dist2 = dx**2 + dy**2
+        self.idx_nearest = int(np.argmin(dist2))
 
-        goal_dir = np.arctan2(5.0 - self.y, 9.0 - self.x) - self.theta
-        return np.concatenate([scans / 5.0, [self.v / 5.0], [np.sin(goal_dir), np.cos(goal_dir)]])
+    def _obs(self):
+        self._find_nearest()
+        cos_v = np.cos(self.theta)
+        sin_v = np.sin(self.theta)
+        dx = self.cx - self.x
+        dy = self.cy - self.y
+        path_x_veh = dx * cos_v + dy * sin_v
+        path_y_veh = -dx * sin_v + dy * cos_v
+
+        angles = np.linspace(-np.pi / 2, np.pi / 2, 16)
+        scans = np.full(16, 10.0)
+        for i, a in enumerate(angles):
+            ray_dx = np.cos(a)
+            ray_dy = np.sin(a)
+            proj = path_x_veh * ray_dx + path_y_veh * ray_dy
+            perp = np.abs(-path_x_veh * ray_dy + path_y_veh * ray_dx)
+            valid = (proj > 0) & (proj < 10.0) & (perp < 2.0)
+            if valid.any():
+                scans[i] = float(np.min(proj[valid]))
+
+        lookahead = min(self.idx_nearest + 15, len(self.cx) - 1)
+        goal_dir = np.arctan2(self.cy[lookahead] - self.y,
+                              self.cx[lookahead] - self.x) - self.theta
+
+        lat_err = float(path_y_veh[self.idx_nearest]) / 5.0
+        hdg_err = float(self.cyaw[self.idx_nearest] - self.theta)
+        hdg_err = np.arctan2(np.sin(hdg_err), np.cos(hdg_err)) / np.pi
+
+        k_idx = min(self.idx_nearest + 5, len(self.cx) - 1)
+        dx2 = self.cx[min(k_idx + 1, len(self.cx) - 1)] - self.cx[max(k_idx - 1, 0)]
+        dy2 = self.cy[min(k_idx + 1, len(self.cy) - 1)] - self.cy[max(k_idx - 1, 0)]
+        curvature = np.clip(dy2 / max(dx2, 0.01), -1, 1)
+
+        return np.concatenate([scans / 10.0, [self.v / 10.0],
+                               [np.sin(goal_dir), np.cos(goal_dir)],
+                               [lat_err, hdg_err, curvature]])
 
     def step(self, action):
-        steer_options = np.radians([-15, 0, 15])
-        throttle_options = [0.3, 0.7]
-        steer = steer_options[action // 2]
-        thr = throttle_options[action % 2]
+        steer_options = np.radians([-20, -10, 0, 10, 20])
+        throttle_options = [0.2, 0.5, 0.8]
+        steer = steer_options[action // 3]
+        thr = throttle_options[action % 3]
 
-        dt = 0.1
-        L = 2.7
-        accel = thr * 3.0 - 0.5
-        self.v = max(self.v + accel * dt, 0.0)
-        self.theta += self.v * np.tan(steer) / L * dt
-        x_old = self.x
-        self.x += self.v * np.cos(self.theta) * dt
-        self.y += self.v * np.sin(self.theta) * dt
+        accel = thr * 5.0 - 1.0
+        self.v = max(self.v + accel * self.dt, 0.0)
+        self.v = min(self.v, 15.0)
+        self.theta += self.v * np.tan(steer) / self.L * self.dt
+        self.x += self.v * np.cos(self.theta) * self.dt
+        self.y += self.v * np.sin(self.theta) * self.dt
         self.steps += 1
 
-        reward = (self.x - x_old) * 1.0
-        reward -= 0.1 * abs(np.degrees(steer)) / 15.0
-        reward -= 0.1
+        self._find_nearest()
+        cos_v = np.cos(self.theta)
+        sin_v = np.sin(self.theta)
+        dx = self.cx - self.x
+        dy = self.cy - self.y
+        path_y_veh = -dx * sin_v + dy * cos_v
+        lat_err = float(path_y_veh[self.idx_nearest])
 
-        if self.x >= 9.0:
-            reward += 50.0
+        hdg_err = self.cyaw[self.idx_nearest] - self.theta
+        hdg_err = np.arctan2(np.sin(hdg_err), np.cos(hdg_err))
+
+        progress = self.s_cum[self.idx_nearest]
+        prev_progress = self.s_cum[max(self.idx_nearest - 1, 0)]
+        reward = (progress - prev_progress) * 0.5
+        reward -= abs(lat_err) * 0.3
+        reward -= abs(hdg_err) * 0.5
+        reward -= 0.05
+
+        if self.idx_nearest >= len(self.cx) - 3:
+            reward += 100.0
             self.done = True
-        elif self._collision():
-            reward -= 100.0
+        elif abs(lat_err) > 8.0:
+            reward -= 50.0
             self.done = True
-        elif self.x < 0 or self.y < 0 or self.y > 10:
-            reward -= 100.0
-            self.done = True
-        elif self.steps >= 500:
+        elif self.steps >= 600:
             self.done = True
 
         return self._obs(), reward, self.done
-
-    def _collision(self):
-        for j in range(self.n_obs):
-            if (abs(self.x - self.obs_x[j]) < self.obs_w[j] / 2 + 0.2 and
-                    abs(self.y - self.obs_y[j]) < self.obs_h[j] / 2 + 0.2):
-                return True
-        return False
 
 
 # === Phase 3: DQN Training ===
@@ -126,10 +162,10 @@ def train_dqn(n_episodes=800, save_path=None, lr=0.0005, batch_size=64, gamma=0.
         save_path = os.path.join(_PROJECT_ROOT, "control", "dqn_weights.npz")
 
     rng = np.random.default_rng(42)
-    env = _GridWorld(rng)
+    env = _PathTrackEnv(rng)
 
-    n_obs = 19
-    n_act = 6
+    n_obs = 22
+    n_act = 15
     n_hidden1 = 128
     n_hidden2 = 64
 
@@ -272,7 +308,7 @@ def rl_control(decision_output, speed_actual=0.0,
 
     n_path = len(decision_output.target_path)
     if n_path < 1:
-        obs = np.zeros(19)
+        obs = np.zeros(22)
     else:
         path_x_global = np.array([p.pose.x for p in decision_output.target_path])
         path_y_global = np.array([p.pose.y for p in decision_output.target_path])
@@ -340,10 +376,10 @@ def main():
     # === Phase 5: DQN Training ===
     n_episodes = 800
     rng = np.random.default_rng(42)
-    env = _GridWorld(rng)
+    env = _PathTrackEnv(rng)
 
-    n_obs_dim = 19
-    n_act_dim = 6
+    n_obs_dim = 22
+    n_act_dim = 15
     n_h1, n_h2 = 128, 64
 
     W1 = rng.normal(0, np.sqrt(2.0 / n_obs_dim), (n_obs_dim, n_h1))
@@ -357,15 +393,15 @@ def main():
     W2_t, b2_t = W2.copy(), b2.copy()
     W3_t, b3_t = W3.copy(), b3.copy()
 
-    replay_max = 10000
+    replay_max = 50000
     replay = deque(maxlen=replay_max)
-    batch_size = 32
+    batch_size = 64
     gamma = 0.99
-    lr_dqn = 0.001
+    lr_dqn = 0.0005
     epsilon = 1.0
     epsilon_min = 0.05
     epsilon_decay = (1.0 - epsilon_min) / max(n_episodes, 1)
-    target_update = 100
+    target_update = 200
     total_steps = 0
     reward_hist = []
 
@@ -402,12 +438,12 @@ def main():
                 d1 = d2 @ W2.T * _relu_grad(s_b @ W1 + b1)
                 dW1 = s_b.T @ d1
                 db1 = d1.sum(axis=0)
-                W1 -= lr_dqn * np.clip(dW1, -1, 1)
-                b1 -= lr_dqn * np.clip(db1, -1, 1)
-                W2 -= lr_dqn * np.clip(dW2, -1, 1)
-                b2 -= lr_dqn * np.clip(db2, -1, 1)
-                W3 -= lr_dqn * np.clip(dW3, -1, 1)
-                b3 -= lr_dqn * np.clip(db3, -1, 1)
+                W1 -= lr_dqn * np.clip(dW1, -5, 5)
+                b1 -= lr_dqn * np.clip(db1, -5, 5)
+                W2 -= lr_dqn * np.clip(dW2, -5, 5)
+                b2 -= lr_dqn * np.clip(db2, -5, 5)
+                W3 -= lr_dqn * np.clip(dW3, -5, 5)
+                b3 -= lr_dqn * np.clip(db3, -5, 5)
             state = next_state
             total_steps += 1
             if total_steps % target_update == 0:
@@ -464,17 +500,28 @@ def main():
 
         lookahead_idx = min(idx_nearest + 20, len(cx) - 1)
         goal_dir = np.arctan2(cy[lookahead_idx] - y, cx[lookahead_idx] - x) - yaw
-        obs = np.concatenate([scans / 5.0, [v / 5.0], [np.sin(goal_dir), np.cos(goal_dir)]])
+
+        lat_err_norm = e_lat / 5.0
+        hdg_err = cyaw[idx_nearest] - yaw
+        hdg_err = np.arctan2(np.sin(hdg_err), np.cos(hdg_err)) / np.pi
+        k_idx = min(idx_nearest + 5, len(cx) - 1)
+        dx2 = cx[min(k_idx + 1, len(cx) - 1)] - cx[max(k_idx - 1, 0)]
+        dy2 = cy[min(k_idx + 1, len(cy) - 1)] - cy[max(k_idx - 1, 0)]
+        curvature = np.clip(dy2 / max(dx2, 0.01), -1, 1)
+
+        obs = np.concatenate([scans / 10.0, [v / 10.0],
+                              [np.sin(goal_dir), np.cos(goal_dir)],
+                              [lat_err_norm, hdg_err, curvature]])
 
         q, _, _ = _forward(obs, W1, b1, W2, b2, W3, b3)
         action = int(np.argmax(q))
 
-        steer_options = np.radians([-15, 0, 15])
-        throttle_options = [0.3, 0.7]
-        steer_rad = steer_options[action // 2]
-        throttle = throttle_options[action % 2]
+        steer_options = np.radians([-20, -10, 0, 10, 20])
+        throttle_options = [0.2, 0.5, 0.8]
+        steer_rad = steer_options[action // 3]
+        throttle = throttle_options[action % 3]
 
-        a_cmd = throttle * 3.0 - 0.5
+        a_cmd = throttle * 5.0 - 1.0
         x += v * np.cos(yaw) * dt_rl
         y += v * np.sin(yaw) * dt_rl
         yaw += v / L * np.tan(steer_rad) * dt_rl
