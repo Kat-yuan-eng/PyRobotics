@@ -124,9 +124,13 @@ Maintains consistent track IDs across frames using **Hungarian algorithm for dat
 
 ## Sign recognition
 
+<img src="docs/images/sign_recognition.png" width="640" alt="Sign recognition">
+
 Detects and classifies traffic signs (speed limit, stop) from camera images using **HOG (Histogram of Oriented Gradients) descriptors** matched against pre-trained templates via normalized cross-correlation. Supports multi-scale sliding window search with non-maximum suppression to handle signs at varying distances.
 
 ## Sensor fusion
+
+<img src="docs/images/sensor_fusion.png" width="640" alt="Sensor fusion">
 
 Fuses camera detections and LiDAR obstacles into a unified coordinate frame using **pinhole camera model back-projection**. Transforms 2D pixel detections to 3D vehicle coordinates via camera intrinsic/extrinsic matrices, then merges with LiDAR obstacles by spatial proximity. Outputs a single `PerceptionOutput` message consumed by the decision layer.
 
@@ -140,6 +144,8 @@ Finite state machine orchestrating three operational modes: **PATROL → AVOID �
 
 ## Path smoothing
 
+<img src="docs/images/path_smoothing.gif" width="640" alt="Path smoothing">
+
 Refines piecewise-linear paths into **curvature-constrained smooth trajectories** via iterative shortening with deviation bounds. Ensures the smoothed path never deviates beyond `max_deviation` from the original waypoints while producing continuous curvature profiles suitable for downstream controllers. Uses gradient descent on path length minimization subject to curvature ≤ κ_max constraints.
 
 ## Obstacle avoidance
@@ -149,6 +155,8 @@ Refines piecewise-linear paths into **curvature-constrained smooth trajectories*
 Generates **lateral offset bypass paths** around detected obstacles by shifting the reference trajectory left or right of each obstacle's safety envelope. Computes safe offset magnitude from obstacle dimensions plus configurable margin. Produces three candidate paths (left-shift, right-shift, original) for the controller selector to choose from based on feasibility.
 
 ## Multi-agent coordination
+
+<img src="docs/images/multi_agent.png" width="640" alt="Multi-agent coordination">
 
 Coordinates multiple vehicles sharing the same road segment via **ID-offset assignment** (each agent gets unique ID range) and **velocity validation** (rejects speed/timestamp outliers). Prevents ID collisions between agents and ensures temporal consistency of shared state messages.
 
@@ -212,9 +220,13 @@ Reference: [Graichen, 2017](http://grauonline.de/wordpress/?page_id=3244)
 
 ## DQN control
 
+<img src="docs/images/dqn_control.gif" width="640" alt="DQN control">
+
 Reinforcement learning-based controller training a **Deep Q-Network** to map state observations (cross-track error, heading error, path curvature, speed) to discrete steering actions. Post-training inference applies **exponential moving average smoothing (α=0.3)** to reduce action jitter, plus a **safety override filter** that clips actions when lateral error exceeds critical thresholds. Training reward combines path-following accuracy and smoothness penalties.
 
 ## Controller selection
+
+<img src="docs/images/controller_selection.gif" width="640" alt="Controller selection">
 
 Adaptive switching logic choosing among Stanley, Pure Pursuit, and Fuzzy based on **current speed and path curvature**. High speed → Stanley (stable at cruise), medium speed → Pure Pursuit (balanced), low speed/high curvature → Fuzzy (handles sharp turns). Implements **Bumpless Transfer** by passing the previous steering angle as initial condition to the newly activated controller, preventing discontinuous steering jumps during handoff.
 

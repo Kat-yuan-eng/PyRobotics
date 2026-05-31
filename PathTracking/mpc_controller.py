@@ -229,7 +229,7 @@ def main():
     target_speed = 30.0 / 3.6
     dt = 0.1
     L = 2.7
-    max_sim_time = 30.0
+    max_sim_time = 50.0
     N = 20
     dt_mpc = 0.1
     max_steer_rad = np.radians(30.0)
