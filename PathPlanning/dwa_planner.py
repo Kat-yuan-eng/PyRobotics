@@ -79,14 +79,27 @@ def dwa_plan(x_state, goal, ob, max_speed=1.0, min_speed=-0.5,
     yaw_rate_res_rad = np.deg2rad(yaw_rate_resolution)
 
     if goal_threshold is None:
-        goal_threshold = max(robot_radius * 2.0, max_speed * dt * 5.0)
+        goal_threshold = max(robot_radius, 0.5)
 
     dist_to_goal = np.hypot(x_state[0] - goal[0], x_state[1] - goal[1])
 
-    if dist_to_goal < goal_threshold:
+    if dist_to_goal < robot_radius * 0.5:
         stats = {"planner": "DWA", "path_length": 0.0, "planning_time_ms": 0.0,
                  "nodes_explored": 0, "path_points": 1}
         return np.array([0.0, 0.0]), x_state.reshape(1, -1), stats
+
+    if dist_to_goal < goal_threshold:
+        angle_to_goal = np.arctan2(goal[1] - x_state[1], goal[0] - x_state[0])
+        yaw_diff = angle_to_goal - x_state[2]
+        yaw_diff = np.arctan2(np.sin(yaw_diff), np.cos(yaw_diff))
+        approach_v = min(max_speed * 0.3, dist_to_goal * 0.5)
+        approach_yw = np.clip(yaw_diff / dt, -max_delta_yaw_rate_rad, max_delta_yaw_rate_rad)
+        approach_traj = predict_trajectory(x_state, approach_v, approach_yw, dt, predict_time)
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        pl = np.sum(np.hypot(np.diff(approach_traj[:, 0]), np.diff(approach_traj[:, 1]))) if len(approach_traj) > 1 else 0.0
+        stats = {"planner": "DWA", "path_length": pl, "planning_time_ms": elapsed_ms,
+                 "nodes_explored": 1, "path_points": len(approach_traj)}
+        return np.array([approach_v, approach_yw]), approach_traj, stats
 
     dw = calc_dynamic_window(x_state, max_speed, min_speed, max_yaw_rate_rad,
                              max_accel, max_delta_yaw_rate_rad, dt, v_resolution)
