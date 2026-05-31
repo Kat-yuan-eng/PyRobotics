@@ -46,25 +46,37 @@ def _gaussian_smooth(arr, sigma):
 # === Phase 5: Smooth Path ===
 
 def smooth_path(path_x, path_y, max_deviation=0.3, n_output=50):
-    if len(path_x) < 3:
-        raise ValueError(f"need >=3 pts, got {len(path_x)}")
+    if len(path_x) < 2:
+        raise ValueError(f"need >=2 pts, got {len(path_x)}")
+    if len(path_x) == 2:
+        s = _arc_length(path_x, path_y)
+        s_uni, x_out, y_out = _resample_by_arc(s, path_x, path_y, n_output)
+        kappa = np.zeros(n_output)
+        return x_out, y_out, kappa
 
     s = _arc_length(path_x, path_y)
     _, xr, yr = _resample_by_arc(s, path_x, path_y, n_output)
 
-    best_sigma = 0.0
     path_x_arr = np.asarray(path_x)
     path_y_arr = np.asarray(path_y)
-    for sigma_try in np.arange(0.5, 8.0, 0.5):
-        sx = _gaussian_smooth(xr, sigma_try)
-        sy = _gaussian_smooth(yr, sigma_try)
+
+    lo, hi = 0.0, 8.0
+    best_sigma = 0.0
+    for _ in range(12):
+        mid = (lo + hi) / 2.0
+        if mid < 0.01:
+            lo = mid
+            continue
+        sx = _gaussian_smooth(xr, mid)
+        sy = _gaussian_smooth(yr, mid)
         dist_mat = np.sqrt((sx[:, None] - path_x_arr[None, :])**2 +
                            (sy[:, None] - path_y_arr[None, :])**2)
         dev_max = float(dist_mat.min(axis=0).max())
         if dev_max <= max_deviation:
-            best_sigma = sigma_try
+            best_sigma = mid
+            lo = mid
         else:
-            break
+            hi = mid
 
     sx = _gaussian_smooth(xr, best_sigma)
     sy = _gaussian_smooth(yr, best_sigma)

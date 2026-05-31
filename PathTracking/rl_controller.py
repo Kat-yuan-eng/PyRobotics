@@ -121,38 +121,35 @@ class _GridWorld:
 
 # === Phase 3: DQN Training ===
 
-def train_dqn(n_episodes=500, save_path=None):
+def train_dqn(n_episodes=800, save_path=None, lr=0.0005, batch_size=64, gamma=0.99):
     if save_path is None:
         save_path = os.path.join(_PROJECT_ROOT, "control", "dqn_weights.npz")
 
     rng = np.random.default_rng(42)
     env = _GridWorld(rng)
 
-    n_obs = 18
+    n_obs = 19
     n_act = 6
-    n_hidden1 = 64
-    n_hidden2 = 32
+    n_hidden1 = 128
+    n_hidden2 = 64
 
-    W1 = rng.normal(0, 0.1, (n_obs, n_hidden1))
+    W1 = rng.normal(0, np.sqrt(2.0 / n_obs), (n_obs, n_hidden1))
     b1 = np.zeros(n_hidden1)
-    W2 = rng.normal(0, 0.1, (n_hidden1, n_hidden2))
+    W2 = rng.normal(0, np.sqrt(2.0 / n_hidden1), (n_hidden1, n_hidden2))
     b2 = np.zeros(n_hidden2)
-    W3 = rng.normal(0, 0.1, (n_hidden2, n_act))
+    W3 = rng.normal(0, np.sqrt(2.0 / n_hidden2), (n_hidden2, n_act))
     b3 = np.zeros(n_act)
 
     W1_t, b1_t = W1.copy(), b1.copy()
     W2_t, b2_t = W2.copy(), b2.copy()
     W3_t, b3_t = W3.copy(), b3.copy()
 
-    replay_max = 10000
+    replay_max = 50000
     replay = deque(maxlen=replay_max)
-    batch_size = 32
-    gamma = 0.99
-    lr = 0.001
     epsilon = 1.0
-    epsilon_min = 0.05
+    epsilon_min = 0.01
     epsilon_decay = (1.0 - epsilon_min) / max(n_episodes, 1)
-    target_update = 100
+    target_update = 200
     total_steps = 0
 
     for ep in range(n_episodes):
@@ -169,8 +166,6 @@ def train_dqn(n_episodes=500, save_path=None):
             next_state, reward, done = env.step(action)
             ep_reward += reward
 
-            if len(replay) >= replay_max:
-                replay.popleft()
             replay.append((state, action, reward, next_state, done))
 
             if len(replay) >= batch_size:
@@ -200,12 +195,12 @@ def train_dqn(n_episodes=500, save_path=None):
                 dW1 = s_batch.T @ d1
                 db1 = d1.sum(axis=0)
 
-                W1 -= lr * np.clip(dW1, -1, 1)
-                b1 -= lr * np.clip(db1, -1, 1)
-                W2 -= lr * np.clip(dW2, -1, 1)
-                b2 -= lr * np.clip(db2, -1, 1)
-                W3 -= lr * np.clip(dW3, -1, 1)
-                b3 -= lr * np.clip(db3, -1, 1)
+                W1 -= lr * np.clip(dW1, -5, 5)
+                b1 -= lr * np.clip(db1, -5, 5)
+                W2 -= lr * np.clip(dW2, -5, 5)
+                b2 -= lr * np.clip(db2, -5, 5)
+                W3 -= lr * np.clip(dW3, -5, 5)
+                b3 -= lr * np.clip(db3, -5, 5)
 
             state = next_state
             total_steps += 1
@@ -277,7 +272,7 @@ def rl_control(decision_output, speed_actual=0.0,
 
     n_path = len(decision_output.target_path)
     if n_path < 1:
-        obs = np.zeros(18)
+        obs = np.zeros(19)
     else:
         path_x_global = np.array([p.pose.x for p in decision_output.target_path])
         path_y_global = np.array([p.pose.y for p in decision_output.target_path])
@@ -343,19 +338,19 @@ def rl_control(decision_output, speed_actual=0.0,
 def main():
     sys.path.insert(0, _PROJECT_ROOT)
     # === Phase 5: DQN Training ===
-    n_episodes = 200
+    n_episodes = 800
     rng = np.random.default_rng(42)
     env = _GridWorld(rng)
 
-    n_obs_dim = 18
+    n_obs_dim = 19
     n_act_dim = 6
-    n_h1, n_h2 = 64, 32
+    n_h1, n_h2 = 128, 64
 
-    W1 = rng.normal(0, 0.1, (n_obs_dim, n_h1))
+    W1 = rng.normal(0, np.sqrt(2.0 / n_obs_dim), (n_obs_dim, n_h1))
     b1 = np.zeros(n_h1)
-    W2 = rng.normal(0, 0.1, (n_h1, n_h2))
+    W2 = rng.normal(0, np.sqrt(2.0 / n_h1), (n_h1, n_h2))
     b2 = np.zeros(n_h2)
-    W3 = rng.normal(0, 0.1, (n_h2, n_act_dim))
+    W3 = rng.normal(0, np.sqrt(2.0 / n_h2), (n_h2, n_act_dim))
     b3 = np.zeros(n_act_dim)
 
     W1_t, b1_t = W1.copy(), b1.copy()

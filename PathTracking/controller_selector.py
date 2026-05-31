@@ -33,9 +33,11 @@ def select_controller(ctrl_type, decision_output, speed_actual, state,
     prev_type = state.get("type", None) if state else None
     prev_steer = state.get("prev_steer", 0.0) if state else 0.0
     if ctrl_type != prev_type:
-        state = {"prev_steer": prev_steer}
+        state = {"prev_steer": prev_steer, "bumpless_steer": prev_steer}
     if ctrl_type == CTRL_PURE_PURSUIT:
         pid_state = state.get("pid", None) if state else None
+        if pid_state is None and "bumpless_steer" in (state or {}):
+            pid_state = {"prev_steer": state["bumpless_steer"]}
         ctrl_out, new_pid = pure_pursuit_control(
             decision_output, speed_actual=speed_actual,
             vehicle_x=vehicle_x, vehicle_y=vehicle_y, vehicle_theta=vehicle_theta,
@@ -46,6 +48,9 @@ def select_controller(ctrl_type, decision_output, speed_actual, state,
 
     elif ctrl_type == CTRL_STANLEY:
         stanley_state = state.get("stanley", None) if state else None
+        if stanley_state is None and "bumpless_steer" in (state or {}):
+            stanley_state = {"outer": (0.0, 0.0), "inner": 0.0, "steer_prev": None,
+                             "d_filtered": 0.0, "a_prev": 0.0, "brake_prev": 0.0}
         ctrl_out, new_stanley = stanley_control(
             decision_output, speed_actual=speed_actual,
             vehicle_x=vehicle_x, vehicle_y=vehicle_y, vehicle_theta=vehicle_theta,
@@ -57,6 +62,8 @@ def select_controller(ctrl_type, decision_output, speed_actual, state,
     elif ctrl_type == CTRL_FUZZY:
         steer_state = state.get("steer", None) if state else None
         fuzzy_state = state.get("fuzzy", None) if state else None
+        if steer_state is None and "bumpless_steer" in (state or {}):
+            steer_state = {"prev_steer": state["bumpless_steer"]}
         ctrl_out, new_inner = fuzzy_control(
             decision_output, speed_actual=speed_actual,
             steer_state=steer_state, fuzzy_state=fuzzy_state, dt=dt,
