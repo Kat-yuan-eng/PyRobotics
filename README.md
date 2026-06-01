@@ -58,7 +58,7 @@ PyRobotics implements a complete autonomous driving pipeline with multiple algor
 
 | Layer | Algorithms | Output |
 |-------|-----------|--------|
-| Perception | HLS lane detection, RANSAC+DBSCAN obstacle detection, HOG sign recognition, pinhole fusion | `PerceptionOutput` |
+| Perception | HLS lane detection, RANSAC+DBSCAN obstacle detection (near-ground curb extraction, geometric type classification), Hungarian+Kalman obstacle tracking, HOG+NCC multi-color sign recognition (red/blue/yellow), pinhole fusion | `PerceptionOutput` |
 | Decision | FSM task scheduler (PATROL→AVOID→PARK), curvature-constrained smoothing, lateral offset avoidance | `DecisionOutput` |
 | Planning | A\*, RRT+smoothing, DWA (with global path alignment) | `PlanOutput` |
 | Tracking | Stanley, Pure Pursuit, Fuzzy, MPC, DQN + adaptive selector | `ControlCommand` |
@@ -114,19 +114,19 @@ Extracts lane center line and boundary points from camera images via **HLS color
 
 <img src="docs/images/obstacle_detection.png" width="640" alt="Obstacle detection">
 
-Processes 3D LiDAR point clouds through a **RANSAC ground plane removal → voxel downsampling → DBSCAN clustering → OBB fitting** pipeline. Each detected obstacle outputs center position (x, y), dimensions (length × width), heading angle, and confidence score. Ground removal uses a robust plane model fit; clustering groups nearby points into individual objects.
+Processes 3D LiDAR point clouds through a **RANSAC ground plane removal → voxel downsampling → DBSCAN clustering → OBB fitting** pipeline with **near-ground obstacle extraction** and **geometric type classification**. Near-ground points (e.g., curbs at z=0.05-0.12m) missed by RANSAC are recovered by a secondary pass over ground-plane points within 0.03-0.2m elevation. Each obstacle is classified by height, area, and aspect ratio into VEHICLE, PEDESTRIAN, CYCLIST, or STATIC. Distance-adaptive DBSCAN automatically adjusts eps and min_pts for far-range sparse point clouds. Deterministic RANSAC via seeded RNG ensures reproducible results.
 
 ## Obstacle tracking
 
 <img src="docs/images/obstacle_tracking.gif" width="640" alt="Obstacle tracking">
 
-Maintains consistent track IDs across frames using **Hungarian algorithm for data association** combined with **Kalman filter for velocity estimation**. Handles track creation (new detections unmatched), persistence (matched with predicted position), and deletion (lost for N consecutive frames). Outputs tracked obstacle list with velocity vectors for prediction.
+Maintains consistent track IDs across frames using **Hungarian algorithm (scipy linear_sum_assignment)** for optimal data association combined with **2D constant-velocity Kalman filter** for state estimation. The Kalman filter state [x, y, vx, vy] provides smooth position prediction and velocity estimation from position history. Handles track creation (new detections unmatched), persistence (matched with predicted position), and deletion (lost for N consecutive frames). Confirmed tracks get extended occlusion tolerance (max_age=15 vs 5 for unconfirmed) with occlusion flag. Free ID pool recycles deleted track IDs to prevent overflow. Fully integrated into main_loop pipeline: detection → tracking → fusion.
 
 ## Sign recognition
 
 <img src="docs/images/sign_recognition.png" width="640" alt="Sign recognition">
 
-Detects and classifies traffic signs (speed limit, stop) from camera images using **HOG (Histogram of Oriented Gradients) descriptors** matched against pre-trained templates via normalized cross-correlation. Supports multi-scale sliding window search with non-maximum suppression to handle signs at varying distances.
+Detects and classifies traffic signs from camera images using **multi-color HSV segmentation** (red for speed/prohibition, blue for mandatory, yellow for warning) combined with **shape pre-classification** (circle, triangle, rectangle) and **HOG+NCC template matching** at 128×128 resolution. Shape pre-classification reduces the template search space — circular signs match only speed/mandatory/prohibition templates, triangles match only warning templates. Speed limit signs are further refined by **ROI normalized cross-correlation** on the inner digit region to distinguish similar numbers (e.g., 30 vs 50). Supports 24 rotation angles (15° increments) with data augmentation (noise, blur, brightness, shift) for robustness. NMS post-processing eliminates duplicate detections.
 
 ## Sensor fusion
 
