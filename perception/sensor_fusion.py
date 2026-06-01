@@ -10,6 +10,15 @@ sys.path.insert(0, _PROJECT_ROOT)
 from generated import PerceptionOutput, Obstacle, ObstacleType, ObstacleShape, Header, Vec2
 
 
+_OBSTACLE_TYPE_MAP = {
+    "OBSTACLE_UNKNOWN": "OBSTACLE_UNKNOWN",
+    "OBSTACLE_VEHICLE": "OBSTACLE_VEHICLE",
+    "OBSTACLE_PEDESTRIAN": "OBSTACLE_PEDESTRIAN",
+    "OBSTACLE_CYCLIST": "OBSTACLE_CYCLIST",
+    "OBSTACLE_STATIC": "OBSTACLE_STATIC",
+}
+
+
 # === Phase 1: Pixel to Vehicle Coordinate ===
 
 def _pixel_to_vehicle(u, v, K_inv, R, t):
@@ -61,28 +70,43 @@ def _build_obstacles(output, obstacles, signs, R, t, K_inv, image_h,
     cos_v = np.cos(vehicle_theta)
     sin_v = np.sin(vehicle_theta)
     obs_id = 0
+
     for obs in obstacles:
         o = output.obstacles.add()
-        o.id = obs_id
-        o.type = ObstacleType.Value("OBSTACLE_UNKNOWN")
+        o.id = obs.get("id", obs_id)
+
+        obs_type_str = obs.get("type", "OBSTACLE_UNKNOWN")
+        proto_type = _OBSTACLE_TYPE_MAP.get(obs_type_str, "OBSTACLE_UNKNOWN")
+        o.type = ObstacleType.Value(proto_type)
         o.shape = ObstacleShape.Value("SHAPE_RECT")
+
         x_veh, y_veh = obs["center"]
         x_g = x_veh * cos_v - y_veh * sin_v + vehicle_x
         y_g = x_veh * sin_v + y_veh * cos_v + vehicle_y
         c = o.center
         c.x = float(x_g)
         c.y = float(y_g)
-        o.length = obs["length"]
-        o.width = obs["width"]
-        o.heading = obs["heading"]
-        o.confidence = min(obs.get("n_pts", 25) / 50.0, 1.0) * (1.0 - obs.get("residual", 0.1))
-        obs_id += 1
+        o.length = obs.get("length", 1.0)
+        o.width = obs.get("width", 1.0)
+        o.heading = obs.get("heading", 0.0)
+
+        if "confidence" in obs:
+            o.confidence = float(obs["confidence"])
+        else:
+            o.confidence = min(obs.get("n_points", 25) / 50.0, 1.0) * (1.0 - obs.get("residual", 0.1))
+
+        if "vx" in obs and "vy" in obs:
+            v = o.velocity
+            v.x = float(obs["vx"])
+            v.y = float(obs["vy"])
+
+        obs_id = max(obs_id, o.id + 1)
 
     for sign in signs:
         x, y, w, h = sign["bbox"]
         u = x + w / 2.0
-        v = y + h
-        veh_pt = _pixel_to_vehicle(u, v, K_inv, R, t)
+        v_coord = y + h
+        veh_pt = _pixel_to_vehicle(u, v_coord, K_inv, R, t)
         if veh_pt is None:
             continue
 
@@ -100,6 +124,15 @@ def _build_obstacles(output, obstacles, signs, R, t, K_inv, image_h,
         o.width = 0.6
         o.heading = 0.0
         o.confidence = sign["confidence"]
+
+        sign_cat = sign.get("category", "unknown")
+        if sign_cat != "unknown":
+            cat_idx = 0
+            from perception.sign_recognizer import SIGN_CATEGORIES
+            if sign_cat in SIGN_CATEGORIES:
+                cat_idx = SIGN_CATEGORIES.index(sign_cat)
+            o.heading = float(cat_idx) * 0.01
+
         obs_id += 1
 
 

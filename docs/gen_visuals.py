@@ -41,17 +41,88 @@ def _save_png(name, fig):
     plt.close(fig)
 
 
+# === 0. Obstacle Detection PNG ===
+def gen_obstacle_detection():
+    from perception.obstacle_detector import (detect_obstacles, generate_test_point_cloud,
+                                              _fit_plane_ransac, _voxel_downsample,
+                                              _dbscan, _adaptive_dbscan_params,
+                                              _OBSTACLE_TYPE_VEHICLE, _OBSTACLE_TYPE_PEDESTRIAN,
+                                              _OBSTACLE_TYPE_STATIC, _OBSTACLE_TYPE_UNKNOWN)
+    pc = generate_test_point_cloud()
+    rng = np.random.default_rng(42)
+    ground_mask = _fit_plane_ransac(pc, 100, 0.1, rng)
+    non_ground = pc[~ground_mask]
+    downsampled = _voxel_downsample(non_ground, 0.1) if len(non_ground) > 5000 else non_ground
+    eps, min_pts = _adaptive_dbscan_params(downsampled, 0.5, 5)
+    labels = _dbscan(downsampled, eps, min_pts)
+    obs = detect_obstacles(pc)
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+
+    ax1 = axes[0, 0]
+    ax1.scatter(pc[:, 0], pc[:, 1], s=1, c='0.6', alpha=0.3)
+    ax1.set_title("Raw Point Cloud (Top View)")
+    ax1.set_xlabel("x [m]"); ax1.set_ylabel("y [m]")
+    ax1.set_aspect('equal'); ax1.grid(True)
+
+    ax2 = axes[0, 1]
+    ax2.scatter(pc[ground_mask, 0], pc[ground_mask, 1], s=1, c='0.8', alpha=0.3, label='ground')
+    ax2.scatter(pc[~ground_mask, 0], pc[~ground_mask, 1], s=1, c='r', alpha=0.5, label='non-ground')
+    ax2.set_title("RANSAC Ground Removal")
+    ax2.set_xlabel("x [m]"); ax2.set_ylabel("y [m]")
+    ax2.legend(frameon=True, fancybox=True); ax2.set_aspect('equal'); ax2.grid(True)
+
+    ax3 = axes[1, 0]
+    unique_labels = sorted(set(labels.tolist()) - {-1})
+    cmap = plt.cm.Set1(np.linspace(0, 1, max(len(unique_labels), 1)))
+    noise_mask = labels == -1
+    ax3.scatter(downsampled[noise_mask, 0], downsampled[noise_mask, 1], s=1, c='0.7', alpha=0.3, label='noise')
+    for lbl, c in zip(unique_labels, cmap):
+        mask = labels == lbl
+        ax3.scatter(downsampled[mask, 0], downsampled[mask, 1], s=3, c=[c], alpha=0.6, label=f'cluster {lbl}')
+    ax3.set_title("DBSCAN Clustering (Adaptive)")
+    ax3.set_xlabel("x [m]"); ax3.set_ylabel("y [m]")
+    ax3.legend(frameon=True, fancybox=True); ax3.set_aspect('equal'); ax3.grid(True)
+
+    ax4 = axes[1, 1]
+    ax4.scatter(downsampled[:, 0], downsampled[:, 1], s=1, c='0.6', alpha=0.3)
+    type_colors = {
+        _OBSTACLE_TYPE_VEHICLE: 'b', _OBSTACLE_TYPE_PEDESTRIAN: 'g',
+        _OBSTACLE_TYPE_STATIC: 'orange', _OBSTACLE_TYPE_UNKNOWN: 'r',
+    }
+    for i, o in enumerate(obs):
+        color = type_colors.get(o['type'], 'r')
+        cx, cy = o['center']
+        L, W, hdg = o['length'], o['width'], o['heading']
+        corners_local = np.array([
+            [-L/2, -W/2], [L/2, -W/2], [L/2, W/2], [-L/2, W/2], [-L/2, -W/2]
+        ])
+        c_h, s_h = np.cos(hdg), np.sin(hdg)
+        R = np.array([[c_h, -s_h], [s_h, c_h]])
+        corners_global = corners_local @ R.T + np.array([cx, cy])
+        ax4.plot(corners_global[:, 0], corners_global[:, 1], '-', color=color, linewidth=2)
+        ax4.plot(cx, cy, 'xk', markersize=10)
+        ax4.text(cx, cy + 0.3, f"#{i} {o['type'].replace('OBSTACLE_', '')}", ha='center', fontsize=8)
+    ax4.set_title("OBB Bounding Boxes (Typed)")
+    ax4.set_xlabel("x [m]"); ax4.set_ylabel("y [m]")
+    ax4.set_aspect('equal'); ax4.grid(True)
+
+    plt.tight_layout()
+    _save_png("obstacle_detection", fig)
+
+
 # === 1. Obstacle Tracking GIF ===
 def gen_obstacle_tracking():
     from perception.obstacle_tracker import track_obstacles, get_confirmed_tracks
     rng = np.random.default_rng(42)
     n_frames = 40
     tracks = []
+    free_ids = set()
     history = {}
+    obj_types = ["OBSTACLE_VEHICLE", "OBSTACLE_PEDESTRIAN", "OBSTACLE_STATIC"]
     for frame_i in range(n_frames):
-        n_det = rng.integers(2, 5)
         detections = []
-        for d in range(n_det):
+        for d in range(3):
             cx = 5.0 + d * 5.0 + rng.normal(0, 0.3)
             cy = 5.0 + 2.0 * np.sin(frame_i * 0.15 + d) + rng.normal(0, 0.2)
             detections.append({
@@ -59,8 +130,9 @@ def gen_obstacle_tracking():
                 "length": 1.5 + rng.normal(0, 0.1),
                 "width": 0.8 + rng.normal(0, 0.1),
                 "heading": rng.normal(0, 0.1),
+                "type": obj_types[d],
             })
-        tracks = track_obstacles(detections, tracks, dt=0.1)
+        tracks = track_obstacles(detections, tracks, dt=0.1, free_ids=free_ids)
         confirmed = get_confirmed_tracks(tracks)
         for t in tracks:
             tid = t["id"]
@@ -73,10 +145,16 @@ def gen_obstacle_tracking():
             color = plt.cm.tab10(tid % 10)
             ax.plot(arr[:, 0], arr[:, 1], '-', color=color, alpha=0.5, linewidth=1)
             ax.plot(arr[-1, 0], arr[-1, 1], 'o', color=color, markersize=8)
-            ax.annotate(f'ID:{tid}', (arr[-1, 0], arr[-1, 1]), fontsize=8)
+            label = f'ID:{tid}'
+            for t in tracks:
+                if t["id"] == tid:
+                    label = f'ID:{tid} {t.get("type","").replace("OBSTACLE_","")}'
+                    break
+            ax.annotate(label, (arr[-1, 0], arr[-1, 1]), fontsize=8)
         for det in detections:
             ax.plot(det["center"][0], det["center"][1], 'x', color='gray', markersize=6, alpha=0.5)
-        ax.set_title(f'Obstacle Tracking — Frame {frame_i}')
+        n_conf = len(confirmed)
+        ax.set_title(f'Obstacle Tracking (Hungarian+KF) — Frame {frame_i}  confirmed={n_conf}')
         ax.set_xlim(-2, 25)
         ax.set_ylim(-2, 15)
         ax.set_xlabel('x [m]')
@@ -91,20 +169,22 @@ def gen_obstacle_tracking():
 # === 2. Sign Recognition PNG ===
 def gen_sign_recognition():
     from perception.sign_recognizer import recognize_signs, generate_test_sign_image
+    import cv2
     img = generate_test_sign_image()
     results = recognize_signs(img)
     fig, ax = plt.subplots(figsize=(8, 6))
-    ax.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB) if 'cv2' in dir() else img)
     img_rgb = img.copy()
     if img_rgb.ndim == 2:
         img_rgb = np.stack([img_rgb]*3, axis=-1)
-    ax.imshow(img_rgb)
+    ax.imshow(cv2.cvtColor(img_rgb, cv2.COLOR_BGR2RGB))
+    color_map = {"red": "lime", "blue": "cyan", "yellow": "orange"}
     for r in results:
         x, y, w, h = r["bbox"]
-        rect = plt.Rectangle((x, y), w, h, linewidth=2, edgecolor='lime', facecolor='none')
+        edge_color = color_map.get(r.get("color", "red"), "lime")
+        rect = plt.Rectangle((x, y), w, h, linewidth=2, edgecolor=edge_color, facecolor='none')
         ax.add_patch(rect)
-        label = f'{r["category"]} ({r["confidence"]:.2f})'
-        ax.text(x, y - 5, label, color='lime', fontsize=10, fontweight='bold')
+        label = f'{r["category"]} ({r["confidence"]:.2f}) [{r.get("color","?")}]'
+        ax.text(x, y - 5, label, color=edge_color, fontsize=9, fontweight='bold')
     ax.set_title('Sign Recognition — HOG Template Matching')
     ax.axis('off')
     _save_png("sign_recognition", fig)
@@ -333,10 +413,11 @@ def gen_controller_selection():
 
 if __name__ == "__main__":
     targets = sys.argv[1:] if len(sys.argv) > 1 else [
-        "obstacle_tracking", "sign_recognition", "sensor_fusion",
+        "obstacle_detection", "obstacle_tracking", "sign_recognition", "sensor_fusion",
         "path_smoothing", "multi_agent", "dqn_control", "controller_selection"
     ]
     funcs = {
+        "obstacle_detection": gen_obstacle_detection,
         "obstacle_tracking": gen_obstacle_tracking,
         "sign_recognition": gen_sign_recognition,
         "sensor_fusion": gen_sensor_fusion,

@@ -12,6 +12,7 @@ from generated import (PerceptionOutput, DecisionOutput, Behavior,
 
 from perception.lane_pixel_detector import detect_lane_pixels, generate_test_image as gen_lane_img
 from perception.obstacle_detector import detect_obstacles, generate_test_point_cloud
+from perception.obstacle_tracker import track_obstacles, get_confirmed_tracks
 from perception.sign_recognizer import recognize_signs, generate_test_sign_image
 from perception.sensor_fusion import fuse_to_perception, default_camera_params
 from decision.task_scheduler import schedule, TASK_PATROL
@@ -32,7 +33,7 @@ GPS_NOISE_STD = 2.0
 
 def run_main_loop(duration_s=SIM_DURATION_S):
     print(f"[MainLoop] Starting {CONTROL_FREQ_HZ}Hz control loop for {duration_s}s")
-    print(f"[MainLoop] Perception -> Localization(EKF) -> Decision -> Control pipeline")
+    print(f"[MainLoop] Perception(Detect+Track+Fusion) -> Localization(EKF) -> Decision -> Control pipeline")
     print("=" * 78)
 
     test_img = gen_lane_img()
@@ -45,6 +46,8 @@ def run_main_loop(duration_s=SIM_DURATION_S):
 
     signs = recognize_signs(test_sign_img)
     obstacles = detect_obstacles(test_pc)
+    tracks = []
+    free_ids = set()
 
     v_actual = 0.0
     x_actual = 0.0
@@ -80,8 +83,11 @@ def run_main_loop(duration_s=SIM_DURATION_S):
         if seq % 5 == 0:
             obstacles = detect_obstacles(test_pc)
             signs = recognize_signs(test_sign_img)
+        tracks = track_obstacles(obstacles, tracks, dt=CONTROL_PERIOD_S,
+                                 free_ids=free_ids)
+        confirmed = get_confirmed_tracks(tracks)
         perception_out = fuse_to_perception(
-            scan_rows, center_x, obstacles, signs,
+            scan_rows, center_x, confirmed, signs,
             K, R_cam, t_cam,
             vehicle_x=x_ekf[0], vehicle_y=x_ekf[1], vehicle_theta=x_ekf[2]
         )
@@ -121,6 +127,8 @@ def run_main_loop(duration_s=SIM_DURATION_S):
             task_name = scheduler_state.get("task_name", "?")
             ctrl_label = ctrl_name(ctrl_state.get("type", CTRL_STANLEY)) if ctrl_state else "Stanley"
             loc_err = np.sqrt((x_ekf[0] - x_actual)**2 + (x_ekf[1] - y_actual)**2)
+            n_confirmed = len(confirmed)
+            n_tracks = len(tracks)
             print(
                 f"[{seq:4d}] "
                 f"steer={control_out.steering.steering_angle:+6.2f}deg  "
@@ -128,6 +136,7 @@ def run_main_loop(duration_s=SIM_DURATION_S):
                 f"brk={control_out.throttle_brake.brake:.2f}  "
                 f"v={v_actual:.2f}m/s  "
                 f"loc_err={loc_err:.3f}m  "
+                f"trk={n_confirmed}/{n_tracks}  "
                 f"{beh_name}  {mode_name}  {task_name}  {ctrl_label}"
             )
 

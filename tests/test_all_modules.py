@@ -47,12 +47,52 @@ def test_obstacle_detector():
         assert "length" in o, "missing length"
         assert "width" in o, "missing width"
         assert "n_points" in o, "missing n_points"
+        assert "type" in o, "missing type"
+        assert "height" in o, "missing height"
+    has_vehicle = any(o['type'] == 'OBSTACLE_VEHICLE' for o in obs)
+    assert has_vehicle, "expected at least one OBSTACLE_VEHICLE"
+
+def test_obstacle_tracker():
+    from perception.obstacle_tracker import track_obstacles, get_confirmed_tracks
+    import numpy as np
+    rng = np.random.default_rng(42)
+    tracks = []
+    free_ids = set()
+    for frame_i in range(15):
+        detections = []
+        for d in range(3):
+            cx = 5.0 + d * 5.0 + rng.normal(0, 0.3)
+            cy = 5.0 + 2.0 * np.sin(frame_i * 0.15 + d) + rng.normal(0, 0.2)
+            detections.append({
+                "center": np.array([cx, cy]),
+                "length": 1.5, "width": 0.8,
+                "heading": 0.0, "type": "OBSTACLE_UNKNOWN",
+            })
+        tracks = track_obstacles(detections, tracks, dt=0.1, free_ids=free_ids)
+    confirmed = get_confirmed_tracks(tracks)
+    assert len(confirmed) >= 1, f"expected >=1 confirmed, got {len(confirmed)}"
+    for t in confirmed:
+        assert "id" in t, "missing id"
+        assert "vx" in t, "missing vx"
+        assert "vy" in t, "missing vy"
+        assert "speed" in t, "missing speed"
+        assert "type" in t, "missing type"
+    track_ids = [t['id'] for t in confirmed]
+    assert len(track_ids) == len(set(track_ids)), f"ID collision: {track_ids}"
 
 def test_sign_recognizer():
     from perception.sign_recognizer import recognize_signs, generate_test_sign_image
     img = generate_test_sign_image()
     signs = recognize_signs(img)
     assert isinstance(signs, list), "signs not list"
+    if len(signs) > 0:
+        assert "color" in signs[0], "missing color"
+        assert "shape" in signs[0], "missing shape"
+        assert "category" in signs[0], "missing category"
+    has_red = any(s['color'] == 'red' for s in signs)
+    has_blue = any(s['color'] == 'blue' for s in signs)
+    has_yellow = any(s['color'] == 'yellow' for s in signs)
+    assert has_red or has_blue or has_yellow, "no colored signs detected"
 
 def test_sensor_fusion():
     from perception.lane_pixel_detector import detect_lane_pixels, generate_test_image as gen_lane
@@ -432,6 +472,7 @@ print("=" * 70)
 print("\n--- 感知层 ---")
 test_module("lane_pixel_detector", test_lane_pixel_detector)
 test_module("obstacle_detector", test_obstacle_detector)
+test_module("obstacle_tracker", test_obstacle_tracker)
 test_module("sign_recognizer", test_sign_recognizer)
 test_module("sensor_fusion", test_sensor_fusion)
 
