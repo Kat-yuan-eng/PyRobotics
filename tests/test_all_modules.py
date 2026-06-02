@@ -133,7 +133,7 @@ def test_obstacle_avoidance():
     assert beh in ("left", "right", "none", "detour"), f"unexpected behavior: {beh}"
 
 def test_task_scheduler():
-    from decision.task_scheduler import schedule, TASK_PATROL
+    from decision.task_scheduler import schedule, TASK_PATROL, TASK_AVOID
     from perception.sensor_fusion import PerceptionOutput
     from generated import Vec2, Pose2D
     percep = PerceptionOutput()
@@ -147,6 +147,15 @@ def test_task_scheduler():
     state = {"current_task": TASK_PATROL, "task_state": {}}
     dec, state = schedule(percep, state, v_nominal=5.0)
     assert dec.target_speed >= 0, f"target_speed={dec.target_speed}"
+
+    state = {"current_task": TASK_PATROL, "task_state": {}}
+    speed_hist = []
+    for step in range(30):
+        dec, state = schedule(percep, state, v_nominal=5.0)
+        speed_hist.append(dec.target_speed)
+    changes = [abs(speed_hist[i] - speed_hist[i - 1]) for i in range(1, len(speed_hist))]
+    max_change = max(changes) if changes else 0
+    assert max_change < 2.0, f"speed jump {max_change:.2f} > 2.0 m/s per step"
 
 def test_multi_agent():
     from decision.multi_agent import build_ego_state
@@ -178,7 +187,7 @@ def test_stanley():
     assert "brake_prev" in state, "missing brake_prev in state"
 
 def test_fuzzy():
-    from PathTracking.fuzzy_controller import fuzzy_control
+    from PathTracking.fuzzy_controller import fuzzy_control, _fuzzy_infer
     from generated import DecisionOutput, PathPoint, Behavior
     dec = DecisionOutput()
     dec.behavior = Behavior.Value("BEHAVIOR_LANE_KEEP")
@@ -191,6 +200,13 @@ def test_fuzzy():
         pp.curvature = 0.0
     ctrl, state = fuzzy_control(dec, speed_actual=2.0, steer_state=None, fuzzy_state=None, dt=0.02)
     assert ctrl.control_valid, "control not valid"
+
+    du_accel = _fuzzy_infer(0.0, -3.0)
+    assert du_accel > 0, f"kappa=0 dv=-3 should accelerate, got du={du_accel}"
+    du_decel = _fuzzy_infer(0.0, 3.0)
+    assert du_decel < 0, f"kappa=0 dv=3 should decelerate, got du={du_decel}"
+    du_curve = _fuzzy_infer(0.5, 0.0)
+    assert du_curve < 0, f"kappa=0.5 dv=0 should decelerate for safety, got du={du_curve}"
 
 def test_mpc():
     from PathTracking.mpc_controller import mpc_control
@@ -428,9 +444,17 @@ def test_icp_matching():
     transformed = R_true @ pts + T_true[:, None]
     R_est, T_est, err_hist = icp_match(pts, transformed, max_iter=50)
     pos_err = np.linalg.norm(T_est - T_true)
-    assert pos_err < 1.0, f"ICP translation error={pos_err:.3f} too large"
+    angle_est = np.rad2deg(np.arctan2(R_est[1, 0], R_est[0, 0]))
+    angle_true = np.rad2deg(np.arctan2(R_true[1, 0], R_true[0, 0]))
+    assert pos_err < 0.5, f"ICP translation error={pos_err:.3f}m too large"
+    assert abs(angle_est - angle_true) < 5.0, f"ICP angle error={abs(angle_est - angle_true):.1f}deg too large"
     assert len(err_hist) > 0, "ICP no error history"
     assert err_hist[-1] < err_hist[0], "ICP did not converge"
+
+    R_est2, T_est2, err_hist2 = icp_match(pts, transformed, max_iter=50,
+                                            init_pose=np.eye(3))
+    pos_err2 = np.linalg.norm(T_est2 - T_true)
+    assert pos_err2 < 1.0, f"ICP with init_pose error={pos_err2:.3f}m too large"
 
 def test_fast_slam():
     from SLAM.fast_slam import fast_slam, estimate_from_particles, create_particle, generate_slam_test

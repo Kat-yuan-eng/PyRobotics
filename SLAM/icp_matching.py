@@ -37,12 +37,13 @@ def svd_motion_estimation(prev_pts, curr_pts):
 
 # === Phase 3: ICP Match ===
 
-def icp_match(prev_pts, curr_pts, max_iter=100, eps=1e-4, outlier_ratio=3.0,
+def icp_match(source_pts, target_pts, max_iter=100, eps=1e-4, outlier_ratio=3.0,
               init_pose=None):
-    if prev_pts.shape[1] < 3 or curr_pts.shape[1] < 3:
-        raise ValueError(f"ICP needs >=3 pts, got prev={prev_pts.shape[1]}, curr={curr_pts.shape[1]}")
+    if source_pts.shape[1] < 3 or target_pts.shape[1] < 3:
+        raise ValueError(f"ICP needs >=3 pts, got source={source_pts.shape[1]}, target={target_pts.shape[1]}")
     if init_pose is None:
         H = np.eye(3)
+        H[:2, 2] = target_pts.mean(axis=1) - source_pts.mean(axis=1)
     else:
         H = np.array(init_pose, dtype=float)
         if H.shape == (3, 3):
@@ -54,20 +55,20 @@ def icp_match(prev_pts, curr_pts, max_iter=100, eps=1e-4, outlier_ratio=3.0,
             H_mat[:2, :2] = np.array([[np.cos(H[2]), -np.sin(H[2])],
                                        [np.sin(H[2]), np.cos(H[2])]])
             H = H_mat
-    curr_t = H[:2, :2] @ curr_pts + H[:2, 2:3]
+    src_t = H[:2, :2] @ source_pts + H[:2, 2:3]
     error_hist = []
     prev_err = np.inf
 
     for _ in range(max_iter):
-        indices, err = nearest_neighbor_association(prev_pts, curr_t)
+        indices, err = nearest_neighbor_association(target_pts, src_t)
         error_hist.append(err)
 
         if abs(prev_err - err) < eps:
             break
         prev_err = err
 
-        dx = curr_t[0, :] - prev_pts[0, indices]
-        dy = curr_t[1, :] - prev_pts[1, indices]
+        dx = src_t[0, :] - target_pts[0, indices]
+        dy = src_t[1, :] - target_pts[1, indices]
         dists = np.sqrt(dx**2 + dy**2)
         threshold = dists.mean() + outlier_ratio * dists.std()
         valid = dists < threshold
@@ -79,8 +80,8 @@ def icp_match(prev_pts, curr_pts, max_iter=100, eps=1e-4, outlier_ratio=3.0,
         large = dists > huber_delta
         weights[large] = huber_delta / dists[large]
 
-        R, T = svd_motion_estimation(prev_pts[:, indices[valid]], curr_t[:, valid])
-        curr_t = (R @ curr_t) + T[:, None]
+        R, T = svd_motion_estimation(target_pts[:, indices[valid]], src_t[:, valid])
+        src_t = (R @ src_t) + T[:, None]
 
         H_upd = np.eye(3)
         H_upd[:2, :2] = R
@@ -105,62 +106,26 @@ def main():
     target_pts = R_true @ source_pts + T_true[:, None]
     target_pts += rng.normal(0, 0.05, target_pts.shape)
 
-    if show_animation:
-        plt.ion()
-        fig, ax = plt.subplots(figsize=(10, 10))
-
-    H = np.eye(3)
-    curr_pts = source_pts.copy()
-    max_iter = 50
-    eps = 1e-4
-    prev_err = np.inf
-
-    for iteration in range(max_iter):
-        indices, err = nearest_neighbor_association(target_pts, curr_pts)
-        if abs(prev_err - err) < eps:
-            break
-        prev_err = err
-
-        R, T = svd_motion_estimation(target_pts[:, indices], curr_pts)
-        curr_pts = (R @ curr_pts) + T[:, None]
-
-        H_upd = np.eye(3)
-        H_upd[:2, :2] = R
-        H_upd[:2, 2] = T
-        H = H_upd @ H
-
-        if show_animation:
-            plt.cla()
-            ax.plot(source_pts[0], source_pts[1], ".r", label="Source")
-            ax.plot(target_pts[0], target_pts[1], ".b", label="Target")
-            ax.plot(curr_pts[0], curr_pts[1], ".g", label="Transformed")
-            ax.set_xlabel("x [m]")
-            ax.set_ylabel("y [m]")
-            ax.set_title(f"ICP Iteration {iteration + 1}, Error: {err:.4f}")
-            ax.legend(loc="upper left", frameon=True, fancybox=True)
-            ax.grid(True)
-            ax.axis("equal")
-            plt.pause(0.001)
-
-    if show_animation:
-        plt.ioff()
-
-    R_est = H[:2, :2]
-    T_est = H[:2, 2]
+    R_est, T_est, err_hist = icp_match(source_pts, target_pts, max_iter=50)
     angle_est = np.rad2deg(np.arctan2(R_est[1, 0], R_est[0, 0]))
+    pos_err = np.linalg.norm(T_est - T_true)
     print(f"[ICP] True: angle={angle_deg:.1f}deg, tx={tx:.2f}, ty={ty:.2f}")
     print(f"[ICP] Est:  angle={angle_est:.1f}deg, tx={T_est[0]:.2f}, ty={T_est[1]:.2f}")
+    print(f"[ICP] Error: pos={pos_err:.4f}m, angle={abs(angle_est - angle_deg):.2f}deg")
+    print(f"[ICP] Convergence: {len(err_hist)} iters, err {err_hist[0]:.4f} -> {err_hist[-1]:.4f}")
 
-    fig2, ax = plt.subplots(figsize=(10, 10), tight_layout=True)
+    transformed = R_est @ source_pts + T_est[:, None]
+
+    fig, ax = plt.subplots(figsize=(10, 10), tight_layout=True)
     ax.plot(source_pts[0], source_pts[1], ".r", label="Source")
     ax.plot(target_pts[0], target_pts[1], ".b", label="Target")
-    ax.plot(curr_pts[0], curr_pts[1], ".g", label="Transformed")
+    ax.plot(transformed[0], transformed[1], ".g", label="Transformed")
     ax.set_xlabel("x [m]")
     ax.set_ylabel("y [m]")
+    ax.set_title(f"ICP: angle={angle_est:.1f}deg, pos_err={pos_err:.3f}m")
     ax.legend(frameon=True, fancybox=True)
     ax.grid(True)
     ax.axis("equal")
-
     plt.show()
 
 if __name__ == "__main__":

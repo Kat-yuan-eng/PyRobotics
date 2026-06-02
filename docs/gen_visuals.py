@@ -411,10 +411,359 @@ def gen_controller_selection():
     _save_gif("controller_selection", duration=80)
 
 
+# === 8. ICP Matching GIF ===
+def gen_icp_matching():
+    from SLAM.icp_matching import icp_match, nearest_neighbor_association, svd_motion_estimation
+    rng = np.random.default_rng(42)
+    n_pts = 80
+    angle_deg = 15.0
+    angle_rad = np.deg2rad(angle_deg)
+    tx, ty = 1.5, 2.0
+
+    source_pts = rng.uniform(-5, 5, (2, n_pts))
+    R_true = np.array([[np.cos(angle_rad), -np.sin(angle_rad)],
+                        [np.sin(angle_rad), np.cos(angle_rad)]])
+    T_true = np.array([tx, ty])
+    target_pts = R_true @ source_pts + T_true[:, None]
+    target_pts += rng.normal(0, 0.05, target_pts.shape)
+
+    H = np.eye(3)
+    H[:2, 2] = target_pts.mean(axis=1) - source_pts.mean(axis=1)
+    src_t = H[:2, :2] @ source_pts + H[:2, 2:3]
+    max_iter = 30
+    eps = 1e-4
+    prev_err = np.inf
+    outlier_ratio = 3.0
+
+    for iteration in range(max_iter):
+        indices, err = nearest_neighbor_association(target_pts, src_t)
+        if abs(prev_err - err) < eps:
+            break
+        prev_err = err
+
+        dx = src_t[0, :] - target_pts[0, indices]
+        dy = src_t[1, :] - target_pts[1, indices]
+        dists = np.sqrt(dx**2 + dy**2)
+        threshold = dists.mean() + outlier_ratio * dists.std()
+        valid = dists < threshold
+
+        R, T = svd_motion_estimation(target_pts[:, indices[valid]], src_t[:, valid])
+        src_t = (R @ src_t) + T[:, None]
+        H_upd = np.eye(3)
+        H_upd[:2, :2] = R
+        H_upd[:2, 2] = T
+        H = H_upd @ H
+
+        fig, ax = plt.subplots(figsize=(8, 8))
+        ax.plot(source_pts[0], source_pts[1], ".r", markersize=6, label="Source")
+        ax.plot(target_pts[0], target_pts[1], ".b", markersize=6, label="Target")
+        ax.plot(src_t[0], src_t[1], ".g", markersize=6, label="Transformed")
+        H_angle = np.rad2deg(np.arctan2(H[1, 0], H[0, 0]))
+        ax.set_title(f"ICP Iteration {iteration + 1}  err={err:.4f}  angle={H_angle:.1f}deg")
+        ax.legend(frameon=True, fancybox=True)
+        ax.grid(True)
+        ax.axis("equal")
+        ax.set_xlabel("x [m]")
+        ax.set_ylabel("y [m]")
+        _capture_frame(fig)
+        plt.close(fig)
+
+    for _ in range(5):
+        R_est = H[:2, :2]
+        T_est = H[:2, 2]
+        angle_est = np.rad2deg(np.arctan2(R_est[1, 0], R_est[0, 0]))
+        pos_err = np.linalg.norm(T_est - T_true)
+        transformed = R_est @ source_pts + T_est[:, None]
+        fig, ax = plt.subplots(figsize=(8, 8))
+        ax.plot(source_pts[0], source_pts[1], ".r", markersize=6, label="Source")
+        ax.plot(target_pts[0], target_pts[1], ".b", markersize=6, label="Target")
+        ax.plot(transformed[0], transformed[1], ".g", markersize=6, label="Aligned")
+        ax.set_title(f"ICP Result  angle={angle_est:.1f}deg  pos_err={pos_err:.3f}m")
+        ax.legend(frameon=True, fancybox=True)
+        ax.grid(True)
+        ax.axis("equal")
+        ax.set_xlabel("x [m]")
+        ax.set_ylabel("y [m]")
+        _capture_frame(fig)
+        plt.close(fig)
+
+    _save_gif("icp", duration=200)
+
+
+# === 9. Fuzzy Control GIF ===
+def gen_fuzzy_control():
+    from PathTracking.fuzzy_controller import _fuzzy_infer
+    from PathTracking.stanley_controller import _stanley_steer
+    from utils.plot import generate_serpentine_course
+    cx, cy, cyaw, ck = generate_serpentine_course(ds=0.1)
+    target_speed = 30.0 / 3.6
+    dt = 0.1
+    L = 2.7
+    x, y, yaw, v = cx[0], cy[0], cyaw[0], 0.0
+    x_hist, y_hist, v_hist = [x], [y], [0.0]
+    steer_prev = None
+    e_heading_prev = None
+    throttle_prev = 0.0
+    v_integral = 0.0
+
+    for step in range(500):
+        dx = cx - x
+        dy = cy - y
+        cos_v = np.cos(yaw)
+        sin_v = np.sin(yaw)
+        path_x = dx * cos_v + dy * sin_v
+        path_y = -dx * sin_v + dy * cos_v
+        path_theta = cyaw - yaw
+
+        steer_rad, e_lat, e_heading, idx_nearest = _stanley_steer(
+            path_x, path_y, path_theta, v, 0.5, 1.0,
+            L, 0.6, steer_prev, 100.0, dt, 0.05, 1.0, ck, e_heading_prev
+        )
+        steer_rad = np.clip(steer_rad, -np.radians(30.0), np.radians(30.0))
+        steer_prev = steer_rad
+        e_heading_prev = e_heading
+
+        kappa_near = abs(ck[idx_nearest]) if idx_nearest < len(ck) else 0.0
+        dv = np.clip(v - target_speed, -8.0, 8.0)
+        du = _fuzzy_infer(kappa_near, dv)
+
+        v_err = target_speed - v
+        v_integral = np.clip(v_integral + v_err * dt, -3.0, 3.0)
+        throttle_pi = 0.1 * v_err + 0.02 * v_integral
+        throttle_new = np.clip(throttle_prev + du + throttle_pi * dt, 0.0, 1.0)
+        throttle_prev = throttle_new
+
+        brake_preview = float(np.clip(0.3 * kappa_near * v, 0.0, 0.5))
+        if dv > 1.0:
+            brake = float(np.clip(dv * 0.3, 0.0, 1.0))
+            throttle_new = max(throttle_new - brake * 0.5, 0.0)
+        elif kappa_near > 0.3 and dv > -1.0:
+            brake = brake_preview
+            throttle_new = max(throttle_new - brake_preview * 0.3, 0.0)
+        else:
+            brake = 0.0
+
+        a_cmd = throttle_new * 3.0 - brake * 5.0
+        x += v * np.cos(yaw) * dt
+        y += v * np.sin(yaw) * dt
+        yaw += v / L * np.tan(steer_rad) * dt
+        v = max(v + a_cmd * dt, 0.0)
+
+        x_hist.append(x)
+        y_hist.append(y)
+        v_hist.append(v)
+
+        if step % 5 == 0:
+            fig, ax = plt.subplots(figsize=(8, 6))
+            ax.plot(cx, cy, ".r", markersize=1, alpha=0.3, label="course")
+            ax.plot(x_hist, y_hist, "-b", linewidth=1.5, label="trajectory")
+            ax.plot(x, y, "ko", markersize=8)
+            ax.set_title(f"Fuzzy Control  Speed={v * 3.6:.1f} km/h  kappa={kappa_near:.3f}")
+            ax.legend(frameon=True, fancybox=True)
+            ax.grid(True)
+            ax.axis("equal")
+            ax.set_xlabel("x [m]")
+            ax.set_ylabel("y [m]")
+            _capture_frame(fig)
+            plt.close(fig)
+
+        dist_to_end = np.sqrt((x - cx[-1])**2 + (y - cy[-1])**2)
+        if dist_to_end < 2.0:
+            for _ in range(5):
+                fig, ax = plt.subplots(figsize=(8, 6))
+                ax.plot(cx, cy, ".r", markersize=1, alpha=0.3, label="course")
+                ax.plot(x_hist, y_hist, "-b", linewidth=1.5, label="trajectory")
+                ax.plot(x, y, "ko", markersize=8)
+                ax.set_title(f"Fuzzy Control  Goal!  Speed={v * 3.6:.1f} km/h")
+                ax.legend(frameon=True, fancybox=True)
+                ax.grid(True)
+                ax.axis("equal")
+                ax.set_xlabel("x [m]")
+                ax.set_ylabel("y [m]")
+                _capture_frame(fig)
+                plt.close(fig)
+            break
+
+    _save_gif("fuzzy", duration=80)
+
+
+# === 10. Stanley Control GIF ===
+def gen_stanley_control():
+    from PathTracking.stanley_controller import _stanley_steer
+    from utils.plot import generate_serpentine_course
+    cx, cy, cyaw, ck = generate_serpentine_course(ds=0.1)
+    target_speed = 30.0 / 3.6
+    dt = 0.1
+    L = 2.7
+    k_e = 0.5
+    k_v = 1.0
+    x, y, yaw, v = cx[0], cy[0], cyaw[0], 0.0
+    x_hist, y_hist = [x], [y]
+    steer_prev = None
+    e_heading_prev = None
+    v_integral = 0.0
+
+    for step in range(500):
+        dx = cx - x
+        dy = cy - y
+        cos_v = np.cos(yaw)
+        sin_v = np.sin(yaw)
+        path_x = dx * cos_v + dy * sin_v
+        path_y = -dx * sin_v + dy * cos_v
+        path_theta = cyaw - yaw
+
+        steer_rad, e_lat, e_heading, idx_nearest = _stanley_steer(
+            path_x, path_y, path_theta, v, k_e, k_v,
+            L, 0.6, steer_prev, 100.0, dt, 0.05, 1.0, ck, e_heading_prev
+        )
+        steer_rad = np.clip(steer_rad, -np.radians(30.0), np.radians(30.0))
+        steer_prev = steer_rad
+        e_heading_prev = e_heading
+
+        kappa_near = abs(ck[idx_nearest]) if idx_nearest < len(ck) else 0.0
+        v_target = min(target_speed, np.sqrt(3.0 / (kappa_near + 1e-6)))
+        v_err = v_target - v
+        v_integral = np.clip(v_integral + v_err * dt, -3.0, 3.0)
+        a_cmd = 1.2 * v_err + 0.1 * v_integral
+        a_cmd = np.clip(a_cmd, -5.0, 3.0)
+
+        x += v * np.cos(yaw) * dt
+        y += v * np.sin(yaw) * dt
+        yaw += v / L * np.tan(steer_rad) * dt
+        v = max(v + a_cmd * dt, 0.0)
+
+        x_hist.append(x)
+        y_hist.append(y)
+
+        if step % 5 == 0:
+            fig, ax = plt.subplots(figsize=(8, 6))
+            ax.plot(cx, cy, ".r", markersize=1, alpha=0.3, label="course")
+            ax.plot(x_hist, y_hist, "-b", linewidth=1.5, label="trajectory")
+            ax.plot(x, y, "ko", markersize=8)
+            ax.set_title(f"Stanley Control  Speed={v * 3.6:.1f} km/h")
+            ax.legend(frameon=True, fancybox=True)
+            ax.grid(True)
+            ax.axis("equal")
+            ax.set_xlabel("x [m]")
+            ax.set_ylabel("y [m]")
+            _capture_frame(fig)
+            plt.close(fig)
+
+        dist_to_end = np.sqrt((x - cx[-1])**2 + (y - cy[-1])**2)
+        if dist_to_end < 2.0:
+            for _ in range(5):
+                fig, ax = plt.subplots(figsize=(8, 6))
+                ax.plot(cx, cy, ".r", markersize=1, alpha=0.3, label="course")
+                ax.plot(x_hist, y_hist, "-b", linewidth=1.5, label="trajectory")
+                ax.plot(x, y, "ko", markersize=8)
+                ax.set_title(f"Stanley Control  Goal!  Speed={v * 3.6:.1f} km/h")
+                ax.legend(frameon=True, fancybox=True)
+                ax.grid(True)
+                ax.axis("equal")
+                ax.set_xlabel("x [m]")
+                ax.set_ylabel("y [m]")
+                _capture_frame(fig)
+                plt.close(fig)
+            break
+
+    _save_gif("stanley", duration=80)
+
+
+# === 11. Task Scheduler PNG ===
+def gen_task_scheduler():
+    from decision.task_scheduler import schedule, TASK_PATROL, TASK_AVOID, TASK_PARK, _TASK_NAMES
+    from generated import PerceptionOutput, Behavior, Header
+    from perception.lane_pixel_detector import generate_test_image, detect_lane_pixels
+    from perception.sensor_fusion import fuse_to_perception, default_camera_params
+
+    img = generate_test_image()
+    rows, cx = detect_lane_pixels(img)
+    K, R, t = default_camera_params()
+    perc_base = fuse_to_perception(rows, cx, [], [], K, R, t)
+
+    n_steps = 60
+    state = {"current_task": TASK_PATROL, "task_state": {}}
+    task_history = []
+    speed_history = []
+    behavior_history = []
+
+    for step in range(n_steps):
+        if 15 <= step <= 35:
+            perc = PerceptionOutput()
+            perc.header.seq = step
+            perc.header.timestamp_ns = int(time.time() * 1e9)
+            perc.header.frame_id = "perception"
+            perc.road_valid = True
+            for r, x in zip(rows, cx):
+                if not np.isnan(x):
+                    pp = perc.road.center_line.add()
+                    pp.x = float(x)
+                    pp.y = float(r)
+            o = perc.obstacles.add()
+            o.id = 100
+            o.center.x = 5.0
+            o.center.y = 0.5
+            o.length = 1.0
+            o.width = 0.8
+            o.heading = 0.0
+        else:
+            perc = perc_base
+        dec, state = schedule(perc, state, v_nominal=5.0)
+        task_history.append(state["current_task"])
+        speed_history.append(dec.target_speed)
+        behavior_history.append(dec.behavior)
+
+    task_names_arr = np.array([_TASK_NAMES.get(t, "?") for t in task_history])
+    task_colors = {"PATROL": "green", "AVOID": "orange", "PARK": "red"}
+
+    fig, axes = plt.subplots(3, 1, figsize=(14, 10))
+
+    ax1 = axes[0]
+    for i in range(n_steps):
+        c = task_colors.get(task_names_arr[i], "gray")
+        ax1.bar(i, 1, color=c, edgecolor="none")
+    ax1.set_title("Task Scheduler State Machine")
+    ax1.set_xlabel("step")
+    ax1.set_ylabel("task")
+    ax1.set_yticks([])
+    patches = [plt.Rectangle((0, 0), 1, 1, fc=c) for c in task_colors.values()]
+    ax1.legend(patches, task_colors.keys(), frameon=True, fancybox=True)
+    ax1.grid(True, axis="x")
+
+    ax2 = axes[1]
+    ax2.plot(speed_history, "-b", linewidth=1.5)
+    ax2.set_title("Target Speed Profile (Smoothed)")
+    ax2.set_xlabel("step")
+    ax2.set_ylabel("speed [m/s]")
+    ax2.grid(True)
+
+    ax3 = axes[2]
+    beh_map = {}
+    beh_int = []
+    for b in behavior_history:
+        try:
+            name = Behavior.Name(b)
+        except Exception:
+            name = str(b)
+        if name not in beh_map:
+            beh_map[name] = len(beh_map)
+        beh_int.append(beh_map[name])
+    ax3.step(range(n_steps), beh_int, "-r", where="mid", linewidth=1.5)
+    ax3.set_yticks(list(beh_map.values()))
+    ax3.set_yticklabels(list(beh_map.keys()))
+    ax3.set_title("Behavior Output")
+    ax3.set_xlabel("step")
+    ax3.grid(True)
+
+    plt.tight_layout()
+    _save_png("task_scheduler", fig)
+
+
 if __name__ == "__main__":
     targets = sys.argv[1:] if len(sys.argv) > 1 else [
         "obstacle_detection", "obstacle_tracking", "sign_recognition", "sensor_fusion",
-        "path_smoothing", "multi_agent", "dqn_control", "controller_selection"
+        "path_smoothing", "multi_agent", "dqn_control", "controller_selection",
+        "icp_matching", "fuzzy_control", "stanley_control", "task_scheduler"
     ]
     funcs = {
         "obstacle_detection": gen_obstacle_detection,
@@ -425,6 +774,10 @@ if __name__ == "__main__":
         "multi_agent": gen_multi_agent,
         "dqn_control": gen_dqn_control,
         "controller_selection": gen_controller_selection,
+        "icp_matching": gen_icp_matching,
+        "fuzzy_control": gen_fuzzy_control,
+        "stanley_control": gen_stanley_control,
+        "task_scheduler": gen_task_scheduler,
     }
     for name in targets:
         if name not in funcs:

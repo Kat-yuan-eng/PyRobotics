@@ -285,9 +285,11 @@ def _task_park(perception_output, task_state, v_nominal):
 # === Phase 3: Scheduler ===
 
 def schedule(perception_output, scheduler_state, v_nominal=5.0,
-             avoid_trigger_dist=8.0, global_route=None):
+             avoid_trigger_dist=8.0, global_route=None, dt=0.1):
     current_task = scheduler_state.get("current_task", TASK_PATROL)
     task_state = scheduler_state.get("task_state", {})
+    v_smooth = scheduler_state.get("v_smooth", v_nominal)
+    avoid_clear_count = scheduler_state.get("avoid_clear_count", 0)
 
     park_trigger = _detect_park_trigger(perception_output)
     avoid_trigger = _detect_avoid_trigger(perception_output, avoid_trigger_dist)
@@ -296,42 +298,56 @@ def schedule(perception_output, scheduler_state, v_nominal=5.0,
 
     if current_task == TASK_AVOID:
         if task_state.get("obstacle_passed", False):
-            new_task = TASK_PATROL
-            task_state = {}
+            avoid_clear_count += 1
+            if avoid_clear_count >= 3:
+                new_task = TASK_PATROL
+                task_state = {}
+                avoid_clear_count = 0
+        else:
+            avoid_clear_count = 0
     elif current_task == TASK_PARK:
         if avoid_trigger:
             new_task = TASK_AVOID
             task_state = {}
+            avoid_clear_count = 0
         elif task_state.get("park_complete", False):
             new_task = TASK_PATROL
             task_state = {}
     else:
         if avoid_trigger:
             new_task = TASK_AVOID
+            avoid_clear_count = 0
         elif park_trigger:
             new_task = TASK_PARK
 
     if new_task > current_task:
         task_state = {}
+        avoid_clear_count = 0
 
     current_task = new_task
     scheduler_state["current_task"] = current_task
     scheduler_state["task_state"] = task_state
+    scheduler_state["avoid_clear_count"] = avoid_clear_count
 
-    v_effective = {
+    v_target = {
         TASK_PATROL: v_nominal,
-        TASK_AVOID: min(v_nominal * 0.4, 2.0),
+        TASK_AVOID: min(v_nominal * 0.6, 3.0),
         TASK_PARK: 0.0,
     }.get(current_task, v_nominal)
 
+    tau = 0.5
+    alpha = min(dt / tau, 1.0)
+    v_smooth = alpha * v_target + (1 - alpha) * v_smooth
+    scheduler_state["v_smooth"] = v_smooth
+
     if current_task == TASK_PATROL:
-        decision, task_state = _task_patrol(perception_output, task_state, v_effective, global_route=global_route)
+        decision, task_state = _task_patrol(perception_output, task_state, v_smooth, global_route=global_route)
     elif current_task == TASK_AVOID:
-        decision, task_state = _task_avoid(perception_output, task_state, v_effective, avoid_trigger_dist)
+        decision, task_state = _task_avoid(perception_output, task_state, v_smooth, avoid_trigger_dist)
     elif current_task == TASK_PARK:
-        decision, task_state = _task_park(perception_output, task_state, v_effective)
+        decision, task_state = _task_park(perception_output, task_state, v_smooth)
     else:
-        decision, task_state = _task_patrol(perception_output, task_state, v_effective, global_route=global_route)
+        decision, task_state = _task_patrol(perception_output, task_state, v_smooth, global_route=global_route)
 
     scheduler_state["task_state"] = task_state
     scheduler_state["task_name"] = _TASK_NAMES.get(current_task, "UNKNOWN")

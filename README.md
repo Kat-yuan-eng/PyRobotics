@@ -59,7 +59,7 @@ PyRobotics implements a complete autonomous driving pipeline with multiple algor
 | Layer | Algorithms | Output |
 |-------|-----------|--------|
 | Perception | HLS lane detection, RANSAC+DBSCAN obstacle detection (near-ground curb extraction, geometric type classification), Hungarian+Kalman obstacle tracking, HOG+NCC multi-color sign recognition (red/blue/yellow), pinhole fusion | `PerceptionOutput` |
-| Decision | FSM task scheduler (PATROL→AVOID→PARK), curvature-constrained smoothing, lateral offset avoidance | `DecisionOutput` |
+| Decision | FSM task scheduler (PATROL→AVOID→PARK, speed smoothing + hysteresis), curvature-constrained smoothing, lateral offset avoidance | `DecisionOutput` |
 | Planning | A\*, RRT+smoothing, DWA (with global path alignment) | `PlanOutput` |
 | Tracking | Stanley, Pure Pursuit, Fuzzy, MPC, DQN + adaptive selector | `ControlCommand` |
 | Localization | EKF (Joseph-form), Particle Filter, Covariance Intersection | `LocalizationEstimate` |

@@ -15,10 +15,13 @@ from utils.plot import generate_serpentine_course, plot_vehicle
 
 # === Phase 1: Stanley Steering ===
 
-def _find_nearest(path_x, path_y):
+def _find_nearest_forward(path_x, path_y, max_behind=2.0):
     dist_sq = path_x**2 + path_y**2
-    idx = int(np.argmin(dist_sq))
-    return idx
+    forward_mask = path_x > -max_behind
+    if not np.any(forward_mask):
+        return int(np.argmin(dist_sq))
+    dist_masked = np.where(forward_mask, dist_sq, np.inf)
+    return int(np.argmin(dist_masked))
 
 
 def _find_preview_idx(path_x, path_y, nearest_idx, preview_dist):
@@ -31,16 +34,26 @@ def _find_preview_idx(path_x, path_y, nearest_idx, preview_dist):
 
 def _stanley_steer(path_x, path_y, path_theta, speed_actual, k_e, k_v,
                    wheelbase, k_preview, steer_prev, max_steer_rate_dps, dt,
-                   dead_zone, v_damping, kappa_arr):
+                   dead_zone, v_damping, kappa_arr, e_heading_prev=None):
     front_x = path_x - wheelbase
     front_y = path_y.copy()
     dist_sq_front = front_x**2 + front_y**2
-    idx_nearest = int(np.argmin(dist_sq_front))
+    forward_mask = front_x > -2.0
+    if np.any(forward_mask):
+        dist_masked = np.where(forward_mask, dist_sq_front, np.inf)
+        idx_nearest = int(np.argmin(dist_masked))
+    else:
+        idx_nearest = int(np.argmin(dist_sq_front))
 
-    preview_dist = k_preview * max(speed_actual, 0.5)
+    kappa_near = kappa_arr[idx_nearest] if idx_nearest < len(kappa_arr) else 0.0
+    preview_dist = k_preview * max(speed_actual, 0.5) * (1.0 + 5.0 * abs(kappa_near))
     idx_preview = _find_preview_idx(path_x, path_y, idx_nearest, preview_dist)
 
-    e_heading = path_theta[idx_preview]
+    e_heading_raw = path_theta[idx_nearest]
+    if e_heading_prev is not None:
+        e_heading = 0.7 * e_heading_raw + 0.3 * e_heading_prev
+    else:
+        e_heading = e_heading_raw
 
     dx = path_x[idx_nearest] - wheelbase
     dy = path_y[idx_nearest]
@@ -50,11 +63,10 @@ def _stanley_steer(path_x, path_y, path_theta, speed_actual, k_e, k_v,
 
     e_lat_eff = e_lat_front if abs(e_lat_front) > dead_zone else 0.0
 
-    k_e_eff = k_e * min(1.0, speed_actual / v_damping) if v_damping > 0 else k_e
+    k_e_eff = k_e * max(min(1.0, speed_actual / max(v_damping, 0.1)), 0.1) if v_damping > 0 else k_e
 
     steer_fb = e_heading + np.arctan2(k_e_eff * e_lat_eff, speed_actual + k_v)
 
-    kappa_near = kappa_arr[idx_nearest] if idx_nearest < len(kappa_arr) else 0.0
     steer_ff = np.arctan(kappa_near * wheelbase)
 
     steer_raw = steer_fb + steer_ff
@@ -102,9 +114,9 @@ def _curvature_limited_speed(kappa, v_nominal, a_lat_max):
 def stanley_control(decision_output, speed_actual=0.0,
                     vehicle_x=0.0, vehicle_y=0.0, vehicle_theta=0.0,
                     wheelbase=2.7, max_steer_deg=30.0,
-                    k_e=0.5, k_v=1.0, a_lat_max=2.0,
+                    k_e=0.5, k_v=1.0, a_lat_max=3.0,
                     k_preview=0.6, max_steer_rate_dps=100.0,
-                    dead_zone=0.05, v_damping=2.0,
+                    dead_zone=0.05, v_damping=1.0,
                     jerk_max=5.0, brake_ramp_rate=0.5, d_alpha=0.3,
                     pid_state=None, dt=0.02):
     control = ControlOutput()
@@ -167,11 +179,12 @@ def stanley_control(decision_output, speed_actual=0.0,
     d_filtered_prev = pid_state.get("d_filtered", 0.0)
     a_prev = pid_state.get("a_prev", 0.0)
     brake_prev = pid_state.get("brake_prev", 0.0)
+    e_heading_prev = pid_state.get("e_heading_prev", None)
 
     steer_rad, e_lat, e_heading, idx_nearest = _stanley_steer(
         path_x, path_y, path_theta, speed_actual, k_e, k_v,
         wheelbase, k_preview, steer_prev, max_steer_rate_dps, dt,
-        dead_zone, v_damping, kappa
+        dead_zone, v_damping, kappa, e_heading_prev
     )
     max_steer_rad = np.radians(max_steer_deg)
     steer_rad = np.clip(steer_rad, -max_steer_rad, max_steer_rad)
@@ -227,7 +240,8 @@ def stanley_control(decision_output, speed_actual=0.0,
 
     new_state = {"outer": (outer_int, outer_err), "inner": inner_int,
                  "steer_prev": float(steer_rad), "d_filtered": float(d_filtered),
-                 "a_prev": float(a_target), "brake_prev": float(brake)}
+                 "a_prev": float(a_target), "brake_prev": float(brake),
+                 "e_heading_prev": float(e_heading)}
     return control, new_state
 
 
@@ -250,6 +264,8 @@ def main():
     x_hist, y_hist, v_hist, t_hist, lat_err_hist = [], [], [], [], []
     t = 0.0
     steer_prev = None
+    e_heading_prev = None
+    v_integral = 0.0
 
     while t < max_sim_time:
         dx = cx - x
@@ -260,23 +276,19 @@ def main():
         path_y = -dx * sin_v + dy * cos_v
         path_theta = cyaw - yaw
 
-        idx_nearest = int(np.argmin(path_x**2 + path_y**2))
-        e_heading = path_theta[idx_nearest]
-        cos_h = np.cos(path_theta[idx_nearest])
-        sin_h = np.sin(path_theta[idx_nearest])
-        e_lat = -path_x[idx_nearest] * sin_h + path_y[idx_nearest] * cos_h
-
-        steer_rad = e_heading + np.arctan2(0.5 * e_lat, v + 1.0)
-        if steer_prev is not None:
-            max_delta = np.radians(100.0) * dt
-            steer_rad = np.clip(steer_rad, steer_prev - max_delta, steer_prev + max_delta)
+        steer_rad, e_lat, e_heading, idx_nearest = _stanley_steer(
+            path_x, path_y, path_theta, v, 0.5, 1.0,
+            L, 0.6, steer_prev, 100.0, dt, 0.05, 1.0, ck, e_heading_prev
+        )
         steer_rad = np.clip(steer_rad, -np.radians(30.0), np.radians(30.0))
         steer_prev = steer_rad
+        e_heading_prev = e_heading
 
-        a_lat_max = 2.0
-        kappa_near = ck[idx_nearest] if idx_nearest < len(ck) else 0.0
-        v_target = min(target_speed, np.sqrt(a_lat_max / (abs(kappa_near) + 1e-6)))
-        a_cmd = 1.0 * (v_target - v)
+        kappa_near = abs(ck[idx_nearest]) if idx_nearest < len(ck) else 0.0
+        v_target = min(target_speed, np.sqrt(3.0 / (kappa_near + 1e-6)))
+        v_err = v_target - v
+        v_integral = np.clip(v_integral + v_err * dt, -3.0, 3.0)
+        a_cmd = 1.2 * v_err + 0.1 * v_integral
         a_cmd = np.clip(a_cmd, -5.0, 3.0)
 
         x += v * np.cos(yaw) * dt
