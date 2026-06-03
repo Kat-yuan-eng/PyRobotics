@@ -98,9 +98,8 @@ def smooth_path(path_x, path_y, max_deviation=0.3, n_output=50):
     sx, sy = _adaptive_smooth(xr, yr, best_sigma * 0.3, best_sigma)
     sx[0], sy[0] = xr[0], yr[0]
     sx[-1], sy[-1] = xr[-1], yr[-1]
-    for i in range(1, len(sx)):
-        if sx[i] <= sx[i - 1]:
-            sx[i] = sx[i - 1] + 1e-6
+    s_smooth = _arc_length(sx, sy)
+    _, sx, sy = _resample_by_arc(s_smooth, sx, sy, n_output)
     kappa = compute_curvature(sx, sy)
     return sx, sy, kappa
 

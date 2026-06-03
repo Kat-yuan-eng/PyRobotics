@@ -131,7 +131,8 @@ def _build_obstacles(output, obstacles, signs, R, t, K_inv, image_h,
             from perception.sign_recognizer import SIGN_CATEGORIES
             if sign_cat in SIGN_CATEGORIES:
                 cat_idx = SIGN_CATEGORIES.index(sign_cat)
-            o.heading = float(cat_idx) * 0.01
+            o.heading = 0.0
+            o.confidence = float(cat_idx)
 
         obs_id += 1
 

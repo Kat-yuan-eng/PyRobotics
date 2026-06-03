@@ -212,8 +212,11 @@ def _build_template_db():
 
 @functools.lru_cache(maxsize=1)
 def _get_template_db():
-    _build_template_db.cache_clear = None
     return _build_template_db()
+
+
+def warmup_template_db():
+    _get_template_db()
 
 
 # === Phase 2: Sign Localization (Multi-Color) ===
@@ -279,22 +282,24 @@ def _classify_sign(patch, score_threshold, candidate_color, candidate_shape):
     feat = _compute_hog(patch)
     db = _get_template_db()
 
-    best_cat = "unknown"
-    best_score = -1.0
-    for cat, tmpl_feat in db:
-        meta = _CATEGORY_META.get(cat, {})
-        if candidate_color and meta.get("color") != candidate_color:
-            continue
-        if candidate_shape and meta.get("shape") != candidate_shape:
-            continue
-        n_hog = min(len(feat), len(tmpl_feat))
-        score = float(np.dot(feat[:n_hog], tmpl_feat[:n_hog]))
-        if score > best_score:
-            best_score = score
-            best_cat = cat
+    db_cats = np.array([cat for cat, _ in db])
+    db_feats = np.array([tmpl_feat for _, tmpl_feat in db])
+    n_hog = min(len(feat), db_feats.shape[1])
+    scores = db_feats[:, :n_hog] @ feat[:n_hog]
 
-    if best_score < score_threshold:
-        best_cat = "unknown"
+    if candidate_color or candidate_shape:
+        mask = np.ones(len(db), dtype=bool)
+        for i, (cat, _) in enumerate(db):
+            meta = _CATEGORY_META.get(cat, {})
+            if candidate_color and meta.get("color") != candidate_color:
+                mask[i] = False
+            if candidate_shape and meta.get("shape") != candidate_shape:
+                mask[i] = False
+        scores[~mask] = -2.0
+
+    best_idx = int(np.argmax(scores))
+    best_score = float(scores[best_idx])
+    best_cat = str(db_cats[best_idx]) if best_score >= score_threshold else "unknown"
 
     if best_cat.startswith("speed_") and candidate_shape == _SIGN_SHAPE_CIRCLE:
         best_cat, best_score = _refine_speed_class(patch, best_cat, best_score)

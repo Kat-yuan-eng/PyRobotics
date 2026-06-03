@@ -1,7 +1,6 @@
 import sys
 import os
 import numpy as np
-import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -40,7 +39,7 @@ def _fit_plane_ransac(points, n_iter, thresh, rng):
 # === Phase 2: Voxel Downsample ===
 
 def _voxel_downsample(points, voxel_size):
-    voxel_idx = np.floor(points / voxel_size).astype(np.int32)
+    voxel_idx = np.floor(points / voxel_size).astype(np.int64)
     _, unique_map = np.unique(voxel_idx, axis=0, return_inverse=True)
 
     n_unique = unique_map.max() + 1
@@ -311,7 +310,8 @@ def _draw_obb(ax, center, length, width, heading, color='r', linewidth=2):
 
 
 if __name__ == "__main__":
-    show_animation = True
+    import matplotlib.pyplot as plt
+    SHOW_ANIMATION = True
 
     pc = generate_test_point_cloud()
 
@@ -322,7 +322,7 @@ if __name__ == "__main__":
               f"z={o['center_z']:.2f}m  L={o['length']:.2f}m  W={o['width']:.2f}m  "
               f"hdg={np.degrees(o['heading']):.1f}deg  pts={o['n_points']}  type={o['type']}")
 
-    if show_animation:
+    if SHOW_ANIMATION:
         rng = np.random.default_rng(42)
         ground_mask = _fit_plane_ransac(pc, 100, 0.1, rng)
         non_ground = pc[~ground_mask]
@@ -392,5 +392,6 @@ if __name__ == "__main__":
         ax4.grid(True)
 
         plt.tight_layout()
-        plt.savefig("obstacle_detector_result.png", dpi=150)
+        os.makedirs("figs", exist_ok=True)
+        plt.savefig("figs/obstacle_detector.png", dpi=150)
         plt.show()

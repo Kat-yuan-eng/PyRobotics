@@ -1,7 +1,6 @@
 import sys
 import os
 import numpy as np
-import matplotlib.pyplot as plt
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
@@ -189,7 +188,8 @@ def _draw_obs_rect(ax, obs, color='k', linewidth=1.5):
 # === Phase 6: Test ===
 
 if __name__ == "__main__":
-    show_animation = True
+    import matplotlib.pyplot as plt
+    SHOW_ANIMATION = True
 
     path_x = np.linspace(0, 20, 50)
     path_y = np.zeros(50)
@@ -210,7 +210,7 @@ if __name__ == "__main__":
     _, _, beh2 = avoid_obstacles(path_x, path_y, obs2)
     print(f"blocked both sides: behavior={beh2} (expect stop)")
 
-    if show_animation:
+    if SHOW_ANIMATION:
         fig, axes = plt.subplots(1, 3, figsize=(18, 5))
 
         ax1 = axes[0]
@@ -260,6 +260,8 @@ if __name__ == "__main__":
         ax3.grid(True)
 
         plt.tight_layout()
+        os.makedirs("figs", exist_ok=True)
+        plt.savefig("figs/obstacle_avoidance.png", dpi=150)
         plt.show()
 
         n_frames = 50

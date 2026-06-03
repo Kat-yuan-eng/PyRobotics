@@ -64,9 +64,9 @@ def _shortcut_path(path_x, path_y, obstacle_list, robot_radius, path_resolution=
 
 def rrt_plan(sx, sy, gx, gy, obstacle_list, rand_area,
              expand_dis=3.0, path_resolution=0.5, goal_sample_rate=10,
-             max_iter=500, robot_radius=0.8):
+             max_iter=500, robot_radius=0.8, rng_seed=42):
     t0 = time.perf_counter()
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(rng_seed)
 
     nodes_x = [sx]
     nodes_y = [sy]
@@ -111,11 +111,8 @@ def rrt_plan(sx, sy, gx, gy, obstacle_list, rand_area,
                 path_x, path_y = _shortcut_path(path_x, path_y, obstacle_list, robot_radius, path_resolution)
                 path_x_arr, path_y_arr = np.array(path_x), np.array(path_y)
                 if len(path_x_arr) >= 3:
-                    try:
-                        sx, sy, kappa = smooth_path(path_x_arr, path_y_arr, max_deviation=0.3, n_output=len(path_x_arr))
-                        path_x_arr, path_y_arr = sx, sy
-                    except Exception:
-                        kappa = np.zeros(len(path_x_arr))
+                    sx, sy, kappa = smooth_path(path_x_arr, path_y_arr, max_deviation=0.3, n_output=len(path_x_arr))
+                    path_x_arr, path_y_arr = sx, sy
                 else:
                     kappa = np.zeros(len(path_x_arr))
                 path_length = np.sum(np.hypot(np.diff(path_x_arr), np.diff(path_y_arr))) if len(path_x_arr) > 1 else 0.0

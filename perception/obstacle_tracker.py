@@ -50,7 +50,9 @@ def _kf_update(x, P, z):
     S = _KF_H @ P @ _KF_H.T + _KF_R_BASE
     K = P @ _KF_H.T @ np.linalg.inv(S)
     x_upd = x + K @ y
-    P_upd = (np.eye(4) - K @ _KF_H) @ P
+    IKH = np.eye(4) - K @ _KF_H
+    P_upd = IKH @ P @ IKH.T + K @ _KF_R_BASE @ K.T
+    P_upd = (P_upd + P_upd.T) / 2
     return x_upd, P_upd
 
 
@@ -69,7 +71,7 @@ def _predict_track(track, dt, use_kalman):
         track["x"] += track["vx"] * dt
         track["y"] += track["vy"] * dt
 
-    track["age"] += 1
+    track["time_since_update"] += 1
     track["hits_since_update"] += 1
     return track
 
@@ -109,7 +111,7 @@ def _update_track(track, det, dt, alpha, use_kalman):
     track["type"] = det.get("type", track.get("type", "OBSTACLE_UNKNOWN"))
     track["hits"] += 1
     track["hits_since_update"] = 0
-    track["age"] = 0
+    track["time_since_update"] = 0
     track["occluded"] = False
     return track
 
@@ -130,7 +132,7 @@ def track_obstacles(detections, tracks, dt=0.1,
         surviving = []
         for t in tracks:
             age_limit = max_age_occluded if t.get("confirmed", False) else max_age
-            if t["age"] < age_limit:
+            if t["time_since_update"] < age_limit:
                 t["occluded"] = True
                 surviving.append(t)
             else:
@@ -179,7 +181,7 @@ def track_obstacles(detections, tracks, dt=0.1,
     surviving = []
     for t in tracks:
         age_limit = max_age_occluded if t.get("confirmed", False) else max_age
-        if t["age"] < age_limit:
+        if t["time_since_update"] < age_limit:
             surviving.append(t)
         else:
             free_ids.add(t["id"])
@@ -209,7 +211,7 @@ def _create_track(det, track_id, dt, use_kalman):
         "type": det.get("type", "OBSTACLE_UNKNOWN"),
         "hits": 1,
         "hits_since_update": 0,
-        "age": 0,
+        "time_since_update": 0,
         "confirmed": False,
         "occluded": False,
     }

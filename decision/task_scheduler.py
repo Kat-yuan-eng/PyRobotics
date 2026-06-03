@@ -12,7 +12,6 @@ from generated import (PerceptionOutput, DecisionOutput, PathPoint,
 from decision.path_smoother import smooth_path
 from decision.obstacle_avoidance import avoid_obstacles
 from utils.geometry import compute_curvature
-import matplotlib.pyplot as plt
 from perception.lane_pixel_detector import generate_test_image, detect_lane_pixels
 from perception.obstacle_detector import generate_test_point_cloud, detect_obstacles
 from perception.sensor_fusion import fuse_to_perception, default_camera_params
@@ -357,7 +356,8 @@ def schedule(perception_output, scheduler_state, v_nominal=5.0,
 # === Phase 4: Test ===
 
 if __name__ == "__main__":
-    show_animation = True
+    import matplotlib.pyplot as plt
+    SHOW_ANIMATION = True
 
     img = generate_test_image()
     pc = generate_test_point_cloud()
@@ -372,7 +372,7 @@ if __name__ == "__main__":
     print(f"task={state['task_name']}  behavior={Behavior.Name(dec.behavior)}  "
           f"path_pts={len(dec.target_path)}  speed={dec.target_speed:.1f}")
 
-    if show_animation:
+    if SHOW_ANIMATION:
         n_steps = 60
         task_history = []
         speed_history = []
@@ -452,6 +452,8 @@ if __name__ == "__main__":
         ax3.grid(True)
 
         plt.tight_layout()
+        os.makedirs("figs", exist_ok=True)
+        plt.savefig("figs/task_scheduler.png", dpi=150)
         plt.show()
 
         unique_states = set(task_names_arr)
@@ -492,4 +494,5 @@ if __name__ == "__main__":
         ax_d.set_aspect('equal')
         ax_d.axis('off')
         plt.tight_layout()
+        plt.savefig("figs/task_scheduler_state_diagram.png", dpi=150)
         plt.show()

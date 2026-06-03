@@ -13,7 +13,7 @@ from generated import (PerceptionOutput, DecisionOutput, Behavior,
 from perception.lane_pixel_detector import detect_lane_pixels, generate_test_image as gen_lane_img
 from perception.obstacle_detector import detect_obstacles, generate_test_point_cloud
 from perception.obstacle_tracker import track_obstacles, get_confirmed_tracks
-from perception.sign_recognizer import recognize_signs, generate_test_sign_image
+from perception.sign_recognizer import recognize_signs, generate_test_sign_image, warmup_template_db
 from perception.sensor_fusion import fuse_to_perception, default_camera_params
 from decision.task_scheduler import schedule, TASK_PATROL
 from PathTracking.controller_selector import auto_select_controller, CTRL_STANLEY, ctrl_name
@@ -41,8 +41,7 @@ def run_main_loop(duration_s=SIM_DURATION_S):
     test_sign_img = generate_test_sign_image()
     K, R_cam, t_cam = default_camera_params()
 
-    from perception.sign_recognizer import _get_template_db
-    _get_template_db()
+    warmup_template_db()
 
     signs = recognize_signs(test_sign_img)
     obstacles = detect_obstacles(test_pc)

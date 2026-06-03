@@ -2,7 +2,6 @@ import sys
 import os
 import numpy as np
 import cv2
-import matplotlib.pyplot as plt
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
@@ -42,9 +41,12 @@ def _filter_jumps(center_x, threshold):
     if valid.sum() < 2:
         return center_x
     idx = np.where(valid)[0]
+    last_valid_val = center_x[idx[0]]
     for i in range(1, len(idx)):
-        if abs(center_x[idx[i]] - center_x[idx[i - 1]]) > threshold:
+        if abs(center_x[idx[i]] - last_valid_val) > threshold:
             center_x[idx[i]] = np.nan
+        else:
+            last_valid_val = center_x[idx[i]]
     return center_x
 
 
@@ -126,7 +128,8 @@ def generate_test_image(img_w=640, img_h=480):
 
 
 if __name__ == "__main__":
-    show_animation = True
+    import matplotlib.pyplot as plt
+    SHOW_ANIMATION = True
 
     test_img = generate_test_image()
     rows, cx = detect_lane_pixels(test_img)
@@ -139,7 +142,7 @@ if __name__ == "__main__":
         print(f"center_x mean: {np.nanmean(cx):.1f} px (expected ~320)")
         print(f"center_x std:  {np.nanstd(cx):.1f} px")
 
-    if show_animation:
+    if SHOW_ANIMATION:
         mask = _lane_color_mask(test_img)
 
         plt.subplots(2, 2, figsize=(12, 8))
@@ -178,4 +181,6 @@ if __name__ == "__main__":
         plt.grid(True)
 
         plt.tight_layout()
+        os.makedirs("figs", exist_ok=True)
+        plt.savefig("figs/lane_pixel_detector.png", dpi=150)
         plt.show()

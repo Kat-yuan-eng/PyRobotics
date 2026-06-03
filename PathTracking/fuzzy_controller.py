@@ -160,7 +160,7 @@ def fuzzy_control(decision_output, speed_actual=0.0,
     v_err = v_target - speed_actual
     v_integral = np.clip(v_integral + v_err * dt, -3.0, 3.0)
     throttle_pi = 0.1 * v_err + 0.02 * v_integral
-    throttle_new = np.clip(throttle_prev + du + throttle_pi * dt, 0.0, 1.0)
+    throttle_new = np.clip(throttle_prev + du + throttle_pi, 0.0, 1.0)
 
     brake_preview = float(np.clip(0.3 * kappa_near * speed_actual, 0.0, 0.5))
 
@@ -199,7 +199,7 @@ def fuzzy_control(decision_output, speed_actual=0.0,
     return control, new_state
 
 
-show_animation = True
+SHOW_ANIMATION = True
 
 
 def main():
@@ -249,7 +249,7 @@ def main():
         v_err = target_speed - v
         v_integral = np.clip(v_integral + v_err * dt, -3.0, 3.0)
         throttle_pi = 0.1 * v_err + 0.02 * v_integral
-        throttle_new = np.clip(throttle_prev + du + throttle_pi * dt, 0.0, 1.0)
+        throttle_new = np.clip(throttle_prev + du + throttle_pi, 0.0, 1.0)
         throttle_prev = throttle_new
 
         brake_preview = float(np.clip(0.3 * kappa_near * v, 0.0, 0.5))
@@ -282,7 +282,7 @@ def main():
         if dist_to_end < 2.0:
             break
 
-        if show_animation:
+        if SHOW_ANIMATION:
             plt.cla()
             plt.plot(cx, cy, ".r", label="course")
             plt.plot(x_hist, y_hist, "-b", label="trajectory")
@@ -310,6 +310,8 @@ def main():
     axes[2].set_ylabel("Lateral error[m]")
     axes[2].grid(True)
     plt.tight_layout()
+    os.makedirs("figs", exist_ok=True)
+    plt.savefig("figs/fuzzy_controller.png", dpi=150)
     plt.show()
 
 

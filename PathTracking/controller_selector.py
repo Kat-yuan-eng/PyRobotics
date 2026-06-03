@@ -120,9 +120,9 @@ def auto_select_controller(decision_output, speed_actual, state,
     dy = path_y - vehicle_y
     idx_nearest = int(np.argmin(dx**2 + dy**2))
 
-    kappas = [abs(decision_output.target_path[min(i, n_path - 1)].curvature)
-              for i in range(idx_nearest, min(idx_nearest + 20, n_path))]
-    kappa_max = max(kappas) if kappas else 0.0
+    kappa_arr = np.array([decision_output.target_path[i].curvature
+                          for i in range(idx_nearest, min(idx_nearest + 20, n_path))])
+    kappa_max = float(np.abs(kappa_arr).max()) if len(kappa_arr) > 0 else 0.0
 
     lookahead = min(idx_nearest + 10, n_path - 1)
     dist_to_end = np.sqrt((path_x[lookahead] - path_x[-1])**2 +

@@ -16,11 +16,11 @@ def create_grid_map(ox, oy, resolution, robot_radius, sx=0.0, sy=0.0, gx=0.0, gy
     obstacle_map = np.zeros((width, height), dtype=bool)
     r_cells = int(np.ceil(robot_radius / resolution))
     for i in range(len(ox)):
-        gx = int(np.round(ox[i] / resolution)) - min_x
-        gy = int(np.round(oy[i] / resolution)) - min_y
+        obs_gx = int(np.round(ox[i] / resolution)) - min_x
+        obs_gy = int(np.round(oy[i] / resolution)) - min_y
         for dx in range(-r_cells, r_cells + 1):
             for dy in range(-r_cells, r_cells + 1):
-                nx, ny = gx + dx, gy + dy
+                nx, ny = obs_gx + dx, obs_gy + dy
                 if 0 <= nx < width and 0 <= ny < height:
                     if dx * dx + dy * dy <= r_cells * r_cells:
                         obstacle_map[nx, ny] = True

@@ -142,7 +142,7 @@ def run_ekf_demo():
     print(f"[EKF] Improvement = {(1 - rmse/dr_rmse)*100:.1f}%")
     return rmse, dr_rmse
 
-show_animation = True
+SHOW_ANIMATION = True
 
 def main():
     dt = 0.1
@@ -158,7 +158,7 @@ def main():
     dr_states = np.zeros((n_steps, 4))
     dr_states[0] = true_states[0].copy()
 
-    if show_animation:
+    if SHOW_ANIMATION:
         plt.ion()
         fig, ax = plt.subplots(figsize=(10, 10))
 
@@ -169,7 +169,7 @@ def main():
         if i > 0:
             dr_states[i] = motion_model(dr_states[i - 1], controls[i], dt)
 
-        if show_animation and i % 5 == 0:
+        if SHOW_ANIMATION and i % 5 == 0:
             plt.cla()
             ax.plot(true_states[:i + 1, 0], true_states[:i + 1, 1], "-b", label="Truth")
             ax.plot(dr_states[:i + 1, 0], dr_states[:i + 1, 1], "-k", label="Dead Reckoning")
@@ -183,7 +183,7 @@ def main():
             ax.axis("equal")
             plt.pause(0.001)
 
-    if show_animation:
+    if SHOW_ANIMATION:
         plt.ioff()
 
     err_pos = np.sqrt((est_states[:, 0] - true_states[:, 0]) ** 2 +
@@ -211,6 +211,8 @@ def main():
     print(f"[EKF] RMSE = {rmse:.3f}m  (Dead Reckoning RMSE = {dr_rmse:.3f}m)")
     print(f"[EKF] Improvement = {(1 - rmse / max(dr_rmse, 1e-9)) * 100:.1f}%")
 
+    os.makedirs("figs", exist_ok=True)
+    plt.savefig("figs/ekf_localizer.png", dpi=150)
     plt.show()
 
 if __name__ == "__main__":

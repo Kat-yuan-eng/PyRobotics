@@ -15,15 +15,6 @@ from utils.plot import generate_serpentine_course, plot_vehicle
 
 # === Phase 1: Stanley Steering ===
 
-def _find_nearest_forward(path_x, path_y, max_behind=2.0):
-    dist_sq = path_x**2 + path_y**2
-    forward_mask = path_x > -max_behind
-    if not np.any(forward_mask):
-        return int(np.argmin(dist_sq))
-    dist_masked = np.where(forward_mask, dist_sq, np.inf)
-    return int(np.argmin(dist_masked))
-
-
 def _find_preview_idx(path_x, path_y, nearest_idx, preview_dist):
     ds = np.sqrt(np.diff(path_x)**2 + np.diff(path_y)**2)
     s_cum = np.concatenate([[0.0], np.cumsum(ds)])
@@ -245,7 +236,7 @@ def stanley_control(decision_output, speed_actual=0.0,
     return control, new_state
 
 
-show_animation = True
+SHOW_ANIMATION = True
 
 
 def main():
@@ -308,7 +299,7 @@ def main():
         if dist_to_end < 2.0:
             break
 
-        if show_animation:
+        if SHOW_ANIMATION:
             plt.cla()
             plt.plot(cx, cy, ".r", label="course")
             plt.plot(x_hist, y_hist, "-b", label="trajectory")
@@ -319,7 +310,7 @@ def main():
             plt.title("Stanley: Speed[km/h]:" + str(v * 3.6)[:5])
             plt.pause(0.001)
 
-    if show_animation:
+    if SHOW_ANIMATION:
         plt.plot(cx, cy, ".r", label="course")
         plt.plot(x_hist, y_hist, "-b", label="trajectory")
         plt.legend()
@@ -339,6 +330,8 @@ def main():
         plt.xlabel("Time[s]")
         plt.ylabel("Lateral error[m]")
         plt.grid(True)
+        os.makedirs("figs", exist_ok=True)
+        plt.savefig("figs/stanley_controller.png", dpi=150)
         plt.show()
 
 

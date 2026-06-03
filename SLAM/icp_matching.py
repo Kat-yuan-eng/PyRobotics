@@ -21,12 +21,15 @@ def nearest_neighbor_association(prev_pts, curr_pts):
 
 # === Phase 2: SVD Motion Estimation ===
 
-def svd_motion_estimation(prev_pts, curr_pts):
-    pm = prev_pts.mean(axis=1)
-    cm = curr_pts.mean(axis=1)
+def svd_motion_estimation(prev_pts, curr_pts, weights=None):
+    if weights is None:
+        weights = np.ones(prev_pts.shape[1])
+    w = weights / (weights.sum() + 1e-12)
+    pm = (prev_pts * w[None, :]).sum(axis=1)
+    cm = (curr_pts * w[None, :]).sum(axis=1)
     p_centered = prev_pts - pm[:, None]
     c_centered = curr_pts - cm[:, None]
-    W = c_centered @ p_centered.T
+    W = (c_centered * w[None, :]) @ p_centered.T
     u, s, vh = np.linalg.svd(W)
     R = (u @ vh).T
     if np.linalg.det(R) < 0:
@@ -80,7 +83,7 @@ def icp_match(source_pts, target_pts, max_iter=100, eps=1e-4, outlier_ratio=3.0,
         large = dists > huber_delta
         weights[large] = huber_delta / dists[large]
 
-        R, T = svd_motion_estimation(target_pts[:, indices[valid]], src_t[:, valid])
+        R, T = svd_motion_estimation(target_pts[:, indices[valid]], src_t[:, valid], weights[valid])
         src_t = (R @ src_t) + T[:, None]
 
         H_upd = np.eye(3)
